@@ -1,0 +1,50 @@
+name: Update Crypto Portfolio
+
+on:
+  schedule:
+    # Esegui ogni ora
+    - cron: '0 * * * *'
+  
+  # Permette l'esecuzione manuale
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Forza aggiornamento anche se non ci sono cambiamenti'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  update-portfolio:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run portfolio update
+      env:
+        BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
+        BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY }}
+        GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
+      run: |
+        python main.py
+        
+    - name: Upload logs
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: portfolio-logs
+        path: crypto_portfolio.log
+        retention-days: 7 
