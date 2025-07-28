@@ -40,11 +40,13 @@ Nel tuo repository GitHub, vai su Settings > Secrets and variables > Actions e a
 - `BINANCE_API_KEY`: La tua API Key di Binance
 - `BINANCE_SECRET_KEY`: Il tuo Secret Key di Binance
 - `GOOGLE_SHEETS_CREDENTIALS`: Il contenuto del file JSON del service account
-- `GOOGLE_SHEET_ID`: L'ID del tuo Google Sheet
+- `GOOGLE_SHEET_ID`: `1qz8T1p1ji1FuuGIWtfnbTNf3rB8gT7_j1u0u88EgW-M` (Google Sheet preconfigurato)
 
 ### 5. Google Sheet Template
 
-Crea un Google Sheet con questa struttura:
+**Google Sheet preconfigurato**: https://docs.google.com/spreadsheets/d/1qz8T1p1ji1FuuGIWtfnbTNf3rB8gT7_j1u0u88EgW-M/edit?usp=sharing
+
+Crea un Google Sheet con questa struttura (o usa quello preconfigurato):
 
 | Asset | Quantità | Prezzo Medio | Prezzo Attuale | Valore Attuale | Investito Totale | PnL % | PnL € | Ultimo Aggiornamento |
 |-------|----------|--------------|----------------|----------------|------------------|-------|-------|---------------------|
