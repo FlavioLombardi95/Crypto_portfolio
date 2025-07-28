@@ -22,8 +22,16 @@ class GoogleSheetsClient:
     def _create_service(self):
         """Crea il servizio Google Sheets"""
         try:
-            # Parsing delle credenziali dal JSON string
-            credentials_info = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS)
+            # Gestione credenziali: prima prova JSON string, poi file
+            if Config.GOOGLE_SHEETS_CREDENTIALS:
+                # Usa credenziali JSON da variabile d'ambiente (GitHub Actions)
+                credentials_info = json.loads(Config.GOOGLE_SHEETS_CREDENTIALS)
+            elif Config.GOOGLE_SHEETS_CREDENTIALS_FILE:
+                # Usa credenziali da file JSON (locale)
+                with open(Config.GOOGLE_SHEETS_CREDENTIALS_FILE, 'r') as f:
+                    credentials_info = json.load(f)
+            else:
+                raise ValueError("Nessuna credenziale Google Sheets trovata")
             
             # Creazione delle credenziali
             credentials = Credentials.from_service_account_info(

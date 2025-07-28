@@ -14,6 +14,7 @@ class Config:
     
     # Google Sheets Configuration
     GOOGLE_SHEET_ID = os.getenv('GOOGLE_SHEET_ID')
+    GOOGLE_SHEETS_CREDENTIALS_FILE = os.getenv('GOOGLE_SHEETS_CREDENTIALS_FILE')
     GOOGLE_SHEETS_CREDENTIALS = os.getenv('GOOGLE_SHEETS_CREDENTIALS')
     
     # Sheet Configuration
@@ -68,11 +69,14 @@ class Config:
         required_vars = [
             'BINANCE_API_KEY',
             'BINANCE_SECRET_KEY', 
-            'GOOGLE_SHEET_ID',
-            'GOOGLE_SHEETS_CREDENTIALS'
+            'GOOGLE_SHEET_ID'
         ]
         
         missing_vars = []
+        
+        # Verifica che almeno una delle credenziali Google Sheets sia presente
+        if not cls.GOOGLE_SHEETS_CREDENTIALS_FILE and not cls.GOOGLE_SHEETS_CREDENTIALS:
+            missing_vars.append('GOOGLE_SHEETS_CREDENTIALS_FILE o GOOGLE_SHEETS_CREDENTIALS')
         for var in required_vars:
             if not getattr(cls, var):
                 missing_vars.append(var)
