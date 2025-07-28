@@ -422,10 +422,10 @@ class GoogleSheetsManager:
         values_dl = []  # Colonne D-L
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        for item in portfolio_data:
+        for i, item in enumerate(portfolio_data, start=1):
             asset = item['asset']
-            # Usa prezzo medio esistente o lascia vuoto
-            existing_price = existing_prices.get(asset, "")
+            # Usa prezzo medio esistente per indice di riga o lascia vuoto
+            existing_price = existing_prices.get(f"row_{i}", "")
             
             # Calcola automaticamente se c'è un prezzo medio
             total_invested = ""
@@ -434,7 +434,9 @@ class GoogleSheetsManager:
             
             if existing_price and existing_price.strip():
                 try:
-                    avg_price = float(existing_price)
+                    # Converti formato europeo (virgola) in formato americano (punto)
+                    price_str = existing_price.replace(',', '.')
+                    avg_price = float(price_str)
                     quantity = item['quantity']
                     current_value = item['current_value']
                     
@@ -442,9 +444,13 @@ class GoogleSheetsManager:
                     pnl_usdt = round(current_value - total_invested, 2)
                     pnl_percentage = round((pnl_usdt / total_invested * 100), 2) if total_invested > 0 else 0
                     
-                except (ValueError, TypeError):
+                    self.logger.debug(f"💰 {asset}: Calcoli automatici completati")
+                    
+                except (ValueError, TypeError) as e:
                     # Se il prezzo medio non è un numero valido, lascia vuoto
-                    pass
+                    self.logger.warning(f"⚠️ {asset}: Errore calcolo - {e}")
+            else:
+                self.logger.debug(f"📝 {asset}: Nessun prezzo medio trovato")
             
             # APR già in percentuale, non moltiplicare per 100 (Google Sheets lo fa automaticamente)
             apr_value = round(item['apr'] / 100, 4)
@@ -528,8 +534,8 @@ class GoogleSheetsManager:
     def _get_existing_prices(self) -> Dict[str, str]:
         """Legge prezzi medi esistenti dal foglio"""
         try:
-            # Leggi colonna C (Prezzo Medio) esistente
-            range_name = f"{Config.SHEET_NAME}!A:C"
+            # Leggi solo colonna C (Prezzo Medio) esistente
+            range_name = f"{Config.SHEET_NAME}!C:C"
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=Config.GOOGLE_SHEET_ID,
                 range=range_name
@@ -538,15 +544,15 @@ class GoogleSheetsManager:
             existing_prices = {}
             values = result.get('values', [])
             
-            # Salta header (riga 1)
-            for row in values[1:]:
-                if len(row) >= 3:  # Assicurati che ci siano almeno 3 colonne
-                    asset = row[0]  # Colonna A - Asset
-                    price = row[2]  # Colonna C - Prezzo Medio
+            # Salta header (riga 1) e leggi prezzi per indice
+            for i, row in enumerate(values[1:], start=1):
+                if row and len(row) > 0:
+                    price = row[0]  # Colonna C - Prezzo Medio
                     
                     # Salva solo se il prezzo non è vuoto
                     if price and price.strip() and price != "":
-                        existing_prices[asset] = price
+                        # Usa l'indice della riga come chiave temporanea
+                        existing_prices[f"row_{i}"] = price
             
             self.logger.info(f"📖 Prezzi medi esistenti trovati: {len(existing_prices)}")
             return existing_prices
