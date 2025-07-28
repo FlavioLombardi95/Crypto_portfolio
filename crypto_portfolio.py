@@ -442,6 +442,8 @@ class GoogleSheetsManager:
                     # Se il prezzo medio non è un numero valido, lascia vuoto
                     pass
             
+            apr_value = round(item['apr'], 4)
+            
             row = [
                 item['asset'],                    # A - Asset
                 round(item['quantity'], 8),       # B - Quantità
@@ -453,7 +455,7 @@ class GoogleSheetsManager:
                 pnl_usdt,                         # H - PnL USDT (calcolato automaticamente)
                 item['source'],                   # I - Fonte
                 item['type'],                     # J - Tipo
-                round(item['apr'], 2),           # K - APR %
+                apr_value,                        # K - APR % (4 decimali per precisione)
                 current_time                      # L - Ultimo Aggiornamento
             ]
             values.append(row)
