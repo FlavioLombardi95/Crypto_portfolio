@@ -176,71 +176,79 @@ class BinanceManager:
         try:
             earn_data = []
             
-            # Flexible positions
-            flexible = self.client.get_simple_earn_flexible_product_position()
-            self.logger.debug(f"Flexible positions trovate: {len(flexible.get('rows', []))}")
+            # Lista asset da controllare (basata sui test precedenti)
+            assets_to_check = ['ARB', 'BNB', 'BTC', 'C', 'ERA', 'ETH', 'HAEDAL', 'HOME', 'HUMA', 'HYPER', 'SOL', 'TAO', 'OP', 'ONDO']
             
-            for pos in flexible.get('rows', []):
-                asset = pos['asset']
-                amount = float(pos['totalAmount'])
-                
-                if amount > 0:
-                    current_price = self._get_current_price(asset)
+            # Controlla ogni asset individualmente
+            for asset in assets_to_check:
+                try:
+                    # Flexible positions per asset specifico
+                    flexible = self.client.get_simple_earn_flexible_product_position(asset=asset)
                     
-                    if current_price > 0:
-                        current_value = amount * current_price
-                        avg_price = self._get_average_price(asset) or current_price
-                        total_invested = amount * avg_price
-                        pnl = current_value - total_invested
-                        pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
-                        apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                        
-                        earn_data.append({
-                            'asset': asset,
-                            'quantity': amount,
-                            'avg_price': avg_price,
-                            'current_price': current_price,
-                            'current_value': current_value,
-                            'total_invested': total_invested,
-                            'pnl_percentage': pnl_percentage,
-                            'pnl_euro': pnl,
-                            'source': 'Simple Earn',
-                            'type': 'Flexible',
-                            'apr': apr
-                        })
-            
-            # Locked positions
-            locked = self.client.get_simple_earn_locked_product_position()
-            self.logger.debug(f"Locked positions trovate: {len(locked.get('rows', []))}")
-            
-            for pos in locked.get('rows', []):
-                asset = pos['asset']
-                amount = float(pos['totalAmount'])
-                
-                if amount > 0:
-                    current_price = self._get_current_price(asset)
+                    if flexible and flexible.get('rows'):
+                        for pos in flexible['rows']:
+                            amount = float(pos['totalAmount'])
+                            
+                            if amount > 0:
+                                current_price = self._get_current_price(asset)
+                                
+                                if current_price > 0:
+                                    current_value = amount * current_price
+                                    avg_price = self._get_average_price(asset) or current_price
+                                    total_invested = amount * avg_price
+                                    pnl = current_value - total_invested
+                                    pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
+                                    apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                    
+                                    earn_data.append({
+                                        'asset': asset,
+                                        'quantity': amount,
+                                        'avg_price': avg_price,
+                                        'current_price': current_price,
+                                        'current_value': current_value,
+                                        'total_invested': total_invested,
+                                        'pnl_percentage': pnl_percentage,
+                                        'pnl_euro': pnl,
+                                        'source': 'Simple Earn',
+                                        'type': 'Flexible',
+                                        'apr': apr
+                                    })
                     
-                    if current_price > 0:
-                        current_value = amount * current_price
-                        avg_price = self._get_average_price(asset) or current_price
-                        total_invested = amount * avg_price
-                        pnl = current_value - total_invested
-                        pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
-                        apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                        
-                        earn_data.append({
-                            'asset': asset,
-                            'quantity': amount,
-                            'avg_price': avg_price,
-                            'current_price': current_price,
-                            'current_value': current_value,
-                            'total_invested': total_invested,
-                            'pnl_percentage': pnl_percentage,
-                            'pnl_euro': pnl,
-                            'source': 'Simple Earn',
-                            'type': 'Locked',
-                            'apr': apr
-                        })
+                    # Locked positions per asset specifico
+                    locked = self.client.get_simple_earn_locked_product_position(asset=asset)
+                    
+                    if locked and locked.get('rows'):
+                        for pos in locked['rows']:
+                            amount = float(pos['totalAmount'])
+                            
+                            if amount > 0:
+                                current_price = self._get_current_price(asset)
+                                
+                                if current_price > 0:
+                                    current_value = amount * current_price
+                                    avg_price = self._get_average_price(asset) or current_price
+                                    total_invested = amount * avg_price
+                                    pnl = current_value - total_invested
+                                    pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
+                                    apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                    
+                                    earn_data.append({
+                                        'asset': asset,
+                                        'quantity': amount,
+                                        'avg_price': avg_price,
+                                        'current_price': current_price,
+                                        'current_value': current_value,
+                                        'total_invested': total_invested,
+                                        'pnl_percentage': pnl_percentage,
+                                        'pnl_euro': pnl,
+                                        'source': 'Simple Earn',
+                                        'type': 'Locked',
+                                        'apr': apr
+                                    })
+                                    
+                except Exception as e:
+                    self.logger.debug(f"Error processing {asset}: {e}")
+                    continue
             
             self.logger.info(f"✅ Simple Earn: {len(earn_data)} posizioni")
             return earn_data
