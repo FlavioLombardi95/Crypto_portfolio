@@ -110,6 +110,7 @@ class BinanceManager:
             self.logger.info(f"📊 Asset totali trovati: {len(portfolio_data)}")
             
             # 3. Filtra asset con valore >= 0.01€ (più flessibile)
+            # Nota: Gli asset LD* sono token di Launchpool distribuiti gratuitamente
             filtered_data = [item for item in portfolio_data if item['current_value'] >= 0.01]
             
             # 4. Ordina per valore
@@ -234,7 +235,15 @@ class BinanceManager:
     def _get_average_price(self, asset: str) -> float:
         """Calcola prezzo medio di acquisto"""
         try:
-            # Prova USDT
+            # Per asset LD* (Launchpool), usa prezzo attuale come fallback
+            if asset.startswith('LD'):
+                current_price = self._get_current_price(asset)
+                if current_price > 0:
+                    self.logger.debug(f"Asset LD* {asset}: usando prezzo attuale come prezzo medio")
+                    return current_price
+                return 0.0
+            
+            # Per asset normali, prova a calcolare dai trade history
             trades = self.client.get_my_trades(symbol=f"{asset}USDT", limit=100)
             if not trades:
                 # Prova BTC
@@ -245,7 +254,15 @@ class BinanceManager:
                 total_quantity = sum(float(t['qty']) for t in trades if t['isBuyer'])
                 
                 if total_quantity > 0:
-                    return total_cost / total_quantity
+                    avg_price = total_cost / total_quantity
+                    self.logger.debug(f"Prezzo medio {asset}: {avg_price} USDT (da trade history)")
+                    return avg_price
+            
+            # Fallback: usa prezzo attuale
+            current_price = self._get_current_price(asset)
+            if current_price > 0:
+                self.logger.debug(f"Asset {asset}: usando prezzo attuale come prezzo medio (nessun trade trovato)")
+                return current_price
             
             return 0.0
             
