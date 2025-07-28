@@ -1,5 +1,5 @@
 """
-Configurazione per Crypto Portfolio Tracker
+Configurazione per Crypto Portfolio Tracker (Spot + Simple Earn)
 """
 import os
 from typing import Dict, Any
@@ -20,7 +20,7 @@ class Config:
     SHEET_NAME = 'Portfolio'
     START_ROW = 2  # Prima riga dopo le intestazioni
     
-    # Column mappings per Google Sheets
+    # Column mappings per Google Sheets (esteso per Simple Earn)
     COLUMNS = {
         'asset': 'A',
         'quantity': 'B', 
@@ -30,10 +30,13 @@ class Config:
         'total_invested': 'F',
         'pnl_percentage': 'G',
         'pnl_euro': 'H',
-        'last_update': 'I'
+        'source': 'I',
+        'type': 'J',
+        'apr': 'K',
+        'last_update': 'L'
     }
     
-    # Headers per il Google Sheet
+    # Headers per il Google Sheet (esteso per Simple Earn)
     HEADERS = [
         'Asset',
         'Quantità', 
@@ -43,6 +46,9 @@ class Config:
         'Investito Totale',
         'PnL %',
         'PnL €',
+        'Fonte',
+        'Tipo',
+        'APR %',
         'Ultimo Aggiornamento'
     ]
     
@@ -87,7 +93,7 @@ class Config:
         if end_row is None:
             end_row = start_row + 1000  # Range ampio per sicurezza
         
-        return f"{cls.SHEET_NAME}!A{start_row}:I{end_row}"
+        return f"{cls.SHEET_NAME}!A{start_row}:L{end_row}"
     
     @classmethod
     def get_column_letter(cls, column_name: str) -> str:

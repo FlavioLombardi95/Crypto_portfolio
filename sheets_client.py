@@ -1,6 +1,6 @@
 """
 Client per Google Sheets API
-Gestisce la scrittura e lettura dei dati nel foglio di calcolo
+Gestisce la scrittura e lettura dei dati nel foglio di calcolo (Spot + Simple Earn)
 """
 import logging
 import json
@@ -60,10 +60,26 @@ class GoogleSheetsClient:
     def write_headers(self):
         """Scrive le intestazioni nel foglio"""
         try:
-            range_name = f"{Config.SHEET_NAME}!A1:I1"
+            range_name = f"{Config.SHEET_NAME}!A1:L1"
+            
+            # Intestazioni estese per Spot + Simple Earn
+            headers = [
+                'Asset',
+                'Quantità', 
+                'Prezzo Medio',
+                'Prezzo Attuale',
+                'Valore Attuale',
+                'Investito Totale',
+                'PnL %',
+                'PnL €',
+                'Fonte',
+                'Tipo',
+                'APR %',
+                'Ultimo Aggiornamento'
+            ]
             
             body = {
-                'values': [Config.HEADERS]
+                'values': [headers]
             }
             
             self.service.spreadsheets().values().update(
@@ -100,12 +116,15 @@ class GoogleSheetsClient:
                     round(item['total_invested'], 2),
                     round(item['pnl_percentage'], 2),
                     round(item['pnl_euro'], 2),
+                    item.get('source', 'N/A'),
+                    item.get('type', 'N/A'),
+                    round(item.get('apr', 0), 2),
                     current_time
                 ]
                 values.append(row)
             
             # Scrivi i dati
-            range_name = Config.get_sheet_range()
+            range_name = f"{Config.SHEET_NAME}!A2:L{len(values)+1}"
             body = {
                 'values': values
             }
@@ -126,7 +145,7 @@ class GoogleSheetsClient:
     def read_portfolio_data(self) -> List[List]:
         """Legge i dati dal foglio"""
         try:
-            range_name = Config.get_sheet_range()
+            range_name = f"{Config.SHEET_NAME}!A2:L1000"
             
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=Config.GOOGLE_SHEET_ID,
@@ -177,7 +196,7 @@ class GoogleSheetsClient:
             
             # Trova l'ultima riga con dati
             existing_data = self.read_portfolio_data()
-            next_row = len(existing_data) + Config.START_ROW
+            next_row = len(existing_data) + 2  # +2 perché partiamo dalla riga 2
             
             # Aggiungi una riga vuota
             self.update_cell(next_row, 'A', '')
@@ -193,10 +212,13 @@ class GoogleSheetsClient:
                 round(total_invested, 2),
                 round(total_pnl_percentage, 2),
                 round(total_pnl_euro, 2),
+                'Spot + Simple Earn',
+                'Combined',
+                '',
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ]
             
-            range_name = f"{Config.SHEET_NAME}!A{next_row}:I{next_row}"
+            range_name = f"{Config.SHEET_NAME}!A{next_row}:L{next_row}"
             body = {
                 'values': [summary_row]
             }
@@ -218,7 +240,7 @@ class GoogleSheetsClient:
         """Testa la connessione a Google Sheets"""
         try:
             # Prova a leggere le intestazioni
-            range_name = f"{Config.SHEET_NAME}!A1:I1"
+            range_name = f"{Config.SHEET_NAME}!A1:L1"
             result = self.service.spreadsheets().values().get(
                 spreadsheetId=Config.GOOGLE_SHEET_ID,
                 range=range_name
