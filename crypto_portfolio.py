@@ -109,13 +109,13 @@ class BinanceManager:
             
             self.logger.info(f"📊 Asset totali trovati: {len(portfolio_data)}")
             
-            # 3. Filtra asset con valore >= 0.01€
-            filtered_data = [item for item in portfolio_data if item['current_value'] >= 0.01]
+            # 3. Filtra asset con valore >= 1€
+            filtered_data = [item for item in portfolio_data if item['current_value'] >= 1.0]
             
             # 4. Ordina per valore
             filtered_data.sort(key=lambda x: x['current_value'], reverse=True)
             
-            self.logger.info(f"✅ Portfolio filtrato: {len(filtered_data)} asset (valore >= 0.01€)")
+            self.logger.info(f"✅ Portfolio filtrato: {len(filtered_data)} asset (valore >= 1€)")
             return filtered_data
             
         except Exception as e:
@@ -145,10 +145,11 @@ class BinanceManager:
                     
                     if current_price > 0:
                         current_value = total * current_price
-                        avg_price = self._get_average_price(asset) or current_price
-                        total_invested = total * avg_price
-                        pnl = current_value - total_invested
-                        pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
+                        # Prezzo medio lasciato vuoto per inserimento manuale
+                        avg_price = 0.0
+                        total_invested = 0.0  # Calcolato dall'utente
+                        pnl = 0.0  # Calcolato dall'utente
+                        pnl_percentage = 0.0  # Calcolato dall'utente
                         
                         spot_data.append({
                             'asset': asset,
@@ -194,10 +195,11 @@ class BinanceManager:
                                 
                                 if current_price > 0:
                                     current_value = amount * current_price
-                                    avg_price = self._get_average_price(asset) or current_price
-                                    total_invested = amount * avg_price
-                                    pnl = current_value - total_invested
-                                    pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
+                                    # Prezzo medio lasciato vuoto per inserimento manuale
+                                    avg_price = 0.0
+                                    total_invested = 0.0  # Calcolato dall'utente
+                                    pnl = 0.0  # Calcolato dall'utente
+                                    pnl_percentage = 0.0  # Calcolato dall'utente
                                     apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
                                     
                                     earn_data.append({
@@ -226,10 +228,11 @@ class BinanceManager:
                                 
                                 if current_price > 0:
                                     current_value = amount * current_price
-                                    avg_price = self._get_average_price(asset) or current_price
-                                    total_invested = amount * avg_price
-                                    pnl = current_value - total_invested
-                                    pnl_percentage = (pnl / total_invested * 100) if total_invested > 0 else 0
+                                    # Prezzo medio lasciato vuoto per inserimento manuale
+                                    avg_price = 0.0
+                                    total_invested = 0.0  # Calcolato dall'utente
+                                    pnl = 0.0  # Calcolato dall'utente
+                                    pnl_percentage = 0.0  # Calcolato dall'utente
                                     apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
                                     
                                     earn_data.append({
@@ -394,7 +397,7 @@ class GoogleSheetsManager:
         ).execute()
     
     def _write_data(self, portfolio_data: List[Dict]):
-        """Scrive dati portfolio"""
+        """Scrive dati portfolio (escludendo colonna Prezzo Medio)"""
         if not portfolio_data:
             return
         
@@ -403,18 +406,18 @@ class GoogleSheetsManager:
         
         for item in portfolio_data:
             row = [
-                item['asset'],
-                round(item['quantity'], 8),
-                round(item['avg_price'], 2),
-                round(item['current_price'], 2),
-                round(item['current_value'], 2),
-                round(item['total_invested'], 2),
-                round(item['pnl_percentage'], 2),
-                round(item['pnl_euro'], 2),
-                item['source'],
-                item['type'],
-                round(item['apr'], 2),
-                current_time
+                item['asset'],                    # A - Asset
+                round(item['quantity'], 8),       # B - Quantità
+                "",                              # C - Prezzo Medio (lasciato vuoto per inserimento manuale)
+                round(item['current_price'], 2),  # D - Prezzo Attuale
+                round(item['current_value'], 2),  # E - Valore Attuale
+                "",                              # F - Investito Totale (calcolato dall'utente)
+                "",                              # G - PnL % (calcolato dall'utente)
+                "",                              # H - PnL USDT (calcolato dall'utente)
+                item['source'],                   # I - Fonte
+                item['type'],                     # J - Tipo
+                round(item['apr'], 2),           # K - APR %
+                current_time                      # L - Ultimo Aggiornamento
             ]
             values.append(row)
         

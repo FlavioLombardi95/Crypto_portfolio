@@ -12,7 +12,8 @@ Sistema automatizzato per il tracking del portafoglio crypto tramite Binance API
 
 ## ⚠️ Limitazioni Note
 
-- **Prezzo Medio**: Il "Prezzo Medio" calcolato non corrisponde al "Costo Medio" mostrato nel wallet Binance. Binance non fornisce l'API per questo dato interno. Il sistema usa i trade history disponibili o il prezzo attuale come fallback.
+- **Prezzo Medio**: La colonna "Prezzo Medio" viene lasciata vuota per permettere l'inserimento manuale del costo medio reale. L'utente può inserire il prezzo medio di acquisto e il sistema calcolerà automaticamente PnL e Investito Totale.
+- **Filtro Asset**: Vengono mostrati solo gli asset con valore >= 1€ per evitare rumore da asset di piccolo valore.
 
 ## 🛠️ Setup Rapido
 
