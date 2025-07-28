@@ -39,7 +39,7 @@ jobs:
         GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
         GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
       run: |
-        python main.py
+        python crypto_portfolio.py
         
     - name: Upload logs
       uses: actions/upload-artifact@v4

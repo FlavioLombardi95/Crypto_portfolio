@@ -57,16 +57,15 @@ Crea un Google Sheet con questa struttura (o usa quello preconfigurato):
 ```
 Crypto_portfolio/
 ├── README.md                 # Questo file
+├── crypto_portfolio.py       # Sistema unificato (tutto in un file)
 ├── requirements.txt          # Dipendenze Python
-├── main.py                   # Script principale
-├── config.py                 # Configurazione
-├── binance_client.py         # Client Binance API
-├── sheets_client.py          # Client Google Sheets
 ├── .github/
 │   └── workflows/
 │       └── update_portfolio.yml  # GitHub Actions workflow
 └── docs/
-    └── setup_guide.md        # Guida dettagliata setup
+    ├── setup_guide.md        # Guida dettagliata setup
+    ├── github_actions_troubleshooting.md  # Troubleshooting GitHub Actions
+    └── project_summary.md    # Riepilogo progetto
 ```
 
 ## 🚀 Utilizzo
@@ -75,7 +74,7 @@ Crypto_portfolio/
 
 ```bash
 pip install -r requirements.txt
-python main.py
+python crypto_portfolio.py
 ```
 
 ### Esecuzione Automatica
