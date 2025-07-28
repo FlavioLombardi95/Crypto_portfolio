@@ -395,6 +395,8 @@ class GoogleSheetsManager:
                 spreadsheetId=Config.GOOGLE_SHEET_ID,
                 range=range_name
             ).execute()
+        
+        self.logger.info("🧹 Foglio pulito (colonna C preservata)")
     
     def _write_headers(self):
         """Scrive intestazioni"""
@@ -415,7 +417,9 @@ class GoogleSheetsManager:
         # 1. Leggi prezzi medi esistenti
         existing_prices = self._get_existing_prices()
         
-        values = []
+        # 2. Scrivi colonne A, B, D-L (escludendo C)
+        values_ab = []  # Colonne A-B
+        values_dl = []  # Colonne D-L
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         for item in portfolio_data:
@@ -444,10 +448,15 @@ class GoogleSheetsManager:
             
             apr_value = round(item['apr'], 4)
             
-            row = [
+            # Colonna A-B (Asset, Quantità)
+            row_ab = [
                 item['asset'],                    # A - Asset
-                round(item['quantity'], 8),       # B - Quantità
-                existing_price,                   # C - Prezzo Medio (preservato)
+                round(item['quantity'], 8)        # B - Quantità
+            ]
+            values_ab.append(row_ab)
+            
+            # Colonne D-L (escludendo C)
+            row_dl = [
                 round(item['current_price'], 2),  # D - Prezzo Attuale
                 round(item['current_value'], 2),  # E - Valore Attuale
                 total_invested,                   # F - Investito Totale (calcolato automaticamente)
@@ -458,18 +467,29 @@ class GoogleSheetsManager:
                 apr_value,                        # K - APR % (4 decimali per precisione)
                 current_time                      # L - Ultimo Aggiornamento
             ]
-            values.append(row)
+            values_dl.append(row_dl)
         
-        range_name = f"{Config.SHEET_NAME}!A2:L{len(values)+1}"
-        body = {'values': values}
+        # 3. Scrivi colonne A-B
+        range_ab = f"{Config.SHEET_NAME}!A2:B{len(values_ab)+1}"
+        body_ab = {'values': values_ab}
         self.service.spreadsheets().values().update(
             spreadsheetId=Config.GOOGLE_SHEET_ID,
-            range=range_name,
+            range=range_ab,
             valueInputOption='RAW',
-            body=body
+            body=body_ab
         ).execute()
         
-        self.logger.info(f"✅ Scritte {len(values)} righe (prezzi medi preservati)")
+        # 4. Scrivi colonne D-L
+        range_dl = f"{Config.SHEET_NAME}!D2:L{len(values_dl)+1}"
+        body_dl = {'values': values_dl}
+        self.service.spreadsheets().values().update(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            range=range_dl,
+            valueInputOption='RAW',
+            body=body_dl
+        ).execute()
+        
+        self.logger.info(f"✅ Scritte {len(values_ab)} righe (colonna C preservata)")
     
     def _add_summary(self, portfolio_data: List[Dict]):
         """Aggiunge riga di riepilogo"""
