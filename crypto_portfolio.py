@@ -107,13 +107,15 @@ class BinanceManager:
             earn_data = self._get_earn_data()
             portfolio_data.extend(earn_data)
             
-            # 3. Filtra asset con valore >= 1€
-            filtered_data = [item for item in portfolio_data if item['current_value'] >= 1.0]
+            self.logger.info(f"📊 Asset totali trovati: {len(portfolio_data)}")
+            
+            # 3. Filtra asset con valore >= 0.01€ (più flessibile)
+            filtered_data = [item for item in portfolio_data if item['current_value'] >= 0.01]
             
             # 4. Ordina per valore
             filtered_data.sort(key=lambda x: x['current_value'], reverse=True)
             
-            self.logger.info(f"✅ Portfolio: {len(filtered_data)} asset (valore >= 1€)")
+            self.logger.info(f"✅ Portfolio filtrato: {len(filtered_data)} asset (valore >= 0.01€)")
             return filtered_data
             
         except Exception as e:
@@ -212,17 +214,21 @@ class BinanceManager:
         try:
             # Prova USDT
             ticker = self.client.get_symbol_ticker(symbol=f"{asset}USDT")
-            return float(ticker['price'])
-        except:
+            price = float(ticker['price'])
+            self.logger.debug(f"✅ Prezzo {asset}: {price} USDT")
+            return price
+        except Exception as e:
             try:
                 # Prova BTC
                 ticker = self.client.get_symbol_ticker(symbol=f"{asset}BTC")
                 btc_price = float(ticker['price'])
                 # Converti BTC in USDT
                 btc_usdt = self.client.get_symbol_ticker(symbol="BTCUSDT")
-                return btc_price * float(btc_usdt['price'])
-            except:
-                self.logger.debug(f"⚠️ Prezzo non trovato per {asset}")
+                price = btc_price * float(btc_usdt['price'])
+                self.logger.debug(f"✅ Prezzo {asset}: {price} USDT (via BTC)")
+                return price
+            except Exception as e2:
+                self.logger.debug(f"⚠️ Prezzo non trovato per {asset}: USDT={e}, BTC={e2}")
                 return 0.0
     
     def _get_average_price(self, asset: str) -> float:
