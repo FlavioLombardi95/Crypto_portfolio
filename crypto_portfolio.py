@@ -381,12 +381,20 @@ class GoogleSheetsManager:
             raise
     
     def _clear_sheet(self):
-        """Pulisce il foglio"""
-        range_name = f"{Config.SHEET_NAME}!A2:L1000"
-        self.service.spreadsheets().values().clear(
-            spreadsheetId=Config.GOOGLE_SHEET_ID,
-            range=range_name
-        ).execute()
+        """Pulisce il foglio (escludendo colonna Prezzo Medio)"""
+        # Pulisci solo le colonne che vengono sovrascritte
+        # A, B, D, E, F, G, H, I, J, K, L (escludendo C - Prezzo Medio)
+        ranges_to_clear = [
+            f"{Config.SHEET_NAME}!A2:A1000",  # Asset
+            f"{Config.SHEET_NAME}!B2:B1000",  # Quantità
+            f"{Config.SHEET_NAME}!D2:L1000"   # Tutte le altre colonne (D-L)
+        ]
+        
+        for range_name in ranges_to_clear:
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=range_name
+            ).execute()
     
     def _write_headers(self):
         """Scrive intestazioni"""
@@ -400,23 +408,49 @@ class GoogleSheetsManager:
         ).execute()
     
     def _write_data(self, portfolio_data: List[Dict]):
-        """Scrive dati portfolio (escludendo colonna Prezzo Medio)"""
+        """Scrive dati portfolio preservando prezzi medi esistenti"""
         if not portfolio_data:
             return
+        
+        # 1. Leggi prezzi medi esistenti
+        existing_prices = self._get_existing_prices()
         
         values = []
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         for item in portfolio_data:
+            asset = item['asset']
+            # Usa prezzo medio esistente o lascia vuoto
+            existing_price = existing_prices.get(asset, "")
+            
+            # Calcola automaticamente se c'è un prezzo medio
+            total_invested = ""
+            pnl_percentage = ""
+            pnl_usdt = ""
+            
+            if existing_price and existing_price.strip():
+                try:
+                    avg_price = float(existing_price)
+                    quantity = item['quantity']
+                    current_value = item['current_value']
+                    
+                    total_invested = round(quantity * avg_price, 2)
+                    pnl_usdt = round(current_value - total_invested, 2)
+                    pnl_percentage = round((pnl_usdt / total_invested * 100), 2) if total_invested > 0 else 0
+                    
+                except (ValueError, TypeError):
+                    # Se il prezzo medio non è un numero valido, lascia vuoto
+                    pass
+            
             row = [
                 item['asset'],                    # A - Asset
                 round(item['quantity'], 8),       # B - Quantità
-                "",                              # C - Prezzo Medio (lasciato vuoto per inserimento manuale)
+                existing_price,                   # C - Prezzo Medio (preservato)
                 round(item['current_price'], 2),  # D - Prezzo Attuale
                 round(item['current_value'], 2),  # E - Valore Attuale
-                "",                              # F - Investito Totale (calcolato dall'utente)
-                "",                              # G - PnL % (calcolato dall'utente)
-                "",                              # H - PnL USDT (calcolato dall'utente)
+                total_invested,                   # F - Investito Totale (calcolato automaticamente)
+                pnl_percentage,                   # G - PnL % (calcolato automaticamente)
+                pnl_usdt,                         # H - PnL USDT (calcolato automaticamente)
                 item['source'],                   # I - Fonte
                 item['type'],                     # J - Tipo
                 round(item['apr'], 2),           # K - APR %
@@ -433,7 +467,7 @@ class GoogleSheetsManager:
             body=body
         ).execute()
         
-        self.logger.info(f"✅ Scritte {len(values)} righe")
+        self.logger.info(f"✅ Scritte {len(values)} righe (prezzi medi preservati)")
     
     def _add_summary(self, portfolio_data: List[Dict]):
         """Aggiunge riga di riepilogo"""
@@ -467,6 +501,36 @@ class GoogleSheetsManager:
             valueInputOption='RAW',
             body=body
         ).execute()
+    
+    def _get_existing_prices(self) -> Dict[str, str]:
+        """Legge prezzi medi esistenti dal foglio"""
+        try:
+            # Leggi colonna C (Prezzo Medio) esistente
+            range_name = f"{Config.SHEET_NAME}!A:C"
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=range_name
+            ).execute()
+            
+            existing_prices = {}
+            values = result.get('values', [])
+            
+            # Salta header (riga 1)
+            for row in values[1:]:
+                if len(row) >= 3:  # Assicurati che ci siano almeno 3 colonne
+                    asset = row[0]  # Colonna A - Asset
+                    price = row[2]  # Colonna C - Prezzo Medio
+                    
+                    # Salva solo se il prezzo non è vuoto
+                    if price and price.strip() and price != "":
+                        existing_prices[asset] = price
+            
+            self.logger.info(f"📖 Prezzi medi esistenti trovati: {len(existing_prices)}")
+            return existing_prices
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore lettura prezzi esistenti: {e}")
+            return {}
     
     def _apply_formatting(self, data_rows: int):
         """Applica formattazione automatica alle colonne"""

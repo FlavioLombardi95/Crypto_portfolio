@@ -12,8 +12,12 @@ Sistema automatizzato per il tracking del portafoglio crypto tramite Binance API
 
 ## ⚠️ Limitazioni Note
 
-- **Prezzo Medio**: La colonna "Prezzo Medio" viene lasciata vuota per permettere l'inserimento manuale del costo medio reale. L'utente può inserire il prezzo medio di acquisto e il sistema calcolerà automaticamente PnL e Investito Totale.
+- **Prezzo Medio**: La colonna "Prezzo Medio" viene preservata ad ogni aggiornamento. L'utente inserisce il prezzo medio di acquisto e il sistema calcola automaticamente Investito Totale, PnL % e PnL USDT.
 - **Filtro Asset**: Vengono mostrati solo gli asset con valore >= 1€ per evitare rumore da asset di piccolo valore.
+- **Calcoli Automatici**: Quando viene inserito un prezzo medio valido, il sistema calcola automaticamente:
+  - **Investito Totale** = Quantità × Prezzo Medio
+  - **PnL USDT** = Valore Attuale - Investito Totale
+  - **PnL %** = (PnL USDT / Investito Totale) × 100
 
 ## 🛠️ Setup Rapido
 
