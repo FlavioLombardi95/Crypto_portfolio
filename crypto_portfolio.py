@@ -371,6 +371,9 @@ class GoogleSheetsManager:
             # 4. Aggiungi riepilogo
             self._add_summary(portfolio_data)
             
+            # 5. Applica formattazione
+            self._apply_formatting(len(portfolio_data))
+            
             self.logger.info("✅ Google Sheets aggiornato")
             
         except Exception as e:
@@ -463,6 +466,174 @@ class GoogleSheetsManager:
             range=range_name,
             valueInputOption='RAW',
             body=body
+        ).execute()
+    
+    def _apply_formatting(self, data_rows: int):
+        """Applica formattazione automatica alle colonne"""
+        try:
+            # Calcola range dati (escludendo header e summary)
+            data_range = f"{Config.SHEET_NAME}!A2:L{data_rows+1}"
+            summary_range = f"{Config.SHEET_NAME}!A{data_rows+3}:L{data_rows+3}"
+            
+            # Formattazione per colonne USDT ($)
+            usdt_columns = ['D', 'E', 'F', 'H']  # Prezzo Attuale, Valore Attuale, Investito, PnL USDT
+            
+            for col in usdt_columns:
+                # Formatta colonne dati
+                data_col_range = f"{Config.SHEET_NAME}!{col}2:{col}{data_rows+1}"
+                self._format_currency(data_col_range)
+                
+                # Formatta colonna summary
+                summary_col_range = f"{Config.SHEET_NAME}!{col}{data_rows+3}:{col}{data_rows+3}"
+                self._format_currency(summary_col_range)
+            
+            # Formattazione per colonne percentuali (%)
+            percent_columns = ['G', 'K']  # PnL %, APR %
+            
+            for col in percent_columns:
+                # Formatta colonne dati
+                data_col_range = f"{Config.SHEET_NAME}!{col}2:{col}{data_rows+1}"
+                self._format_percentage(data_col_range)
+                
+                # Formatta colonna summary
+                summary_col_range = f"{Config.SHEET_NAME}!{col}{data_rows+3}:{col}{data_rows+3}"
+                self._format_percentage(summary_col_range)
+            
+            # Formattazione quantità (8 decimali)
+            quantity_range = f"{Config.SHEET_NAME}!B2:B{data_rows+1}"
+            self._format_number(quantity_range, 8)
+            
+            # Formattazione prezzo medio (2 decimali)
+            avg_price_range = f"{Config.SHEET_NAME}!C2:C{data_rows+1}"
+            self._format_number(avg_price_range, 2)
+            
+            self.logger.info("✅ Formattazione applicata")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione: {e}")
+    
+    def _format_currency(self, range_name: str):
+        """Formatta come valuta USD"""
+        # Parsing del range (es. "Portfolio!D2:D7")
+        sheet_name, cell_range = range_name.split('!')
+        if ':' in cell_range:
+            start_cell, end_cell = cell_range.split(':')
+        else:
+            start_cell = end_cell = cell_range
+        
+        # Estrai colonna e riga
+        start_col = ''.join(filter(str.isalpha, start_cell))
+        start_row = int(''.join(filter(str.isdigit, start_cell)))
+        end_col = ''.join(filter(str.isalpha, end_cell))
+        end_row = int(''.join(filter(str.isdigit, end_cell)))
+        
+        request = {
+            'repeatCell': {
+                'range': {
+                    'sheetId': 0,  # Primo foglio
+                    'startRowIndex': start_row - 1,
+                    'endRowIndex': end_row,
+                    'startColumnIndex': ord(start_col) - ord('A'),
+                    'endColumnIndex': ord(end_col) - ord('A') + 1
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'numberFormat': {
+                            'type': 'CURRENCY',
+                            'pattern': '$#,##0.00'
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat.numberFormat'
+            }
+        }
+        
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            body={'requests': [request]}
+        ).execute()
+    
+    def _format_percentage(self, range_name: str):
+        """Formatta come percentuale"""
+        # Parsing del range (es. "Portfolio!G2:G7")
+        sheet_name, cell_range = range_name.split('!')
+        if ':' in cell_range:
+            start_cell, end_cell = cell_range.split(':')
+        else:
+            start_cell = end_cell = cell_range
+        
+        # Estrai colonna e riga
+        start_col = ''.join(filter(str.isalpha, start_cell))
+        start_row = int(''.join(filter(str.isdigit, start_cell)))
+        end_col = ''.join(filter(str.isalpha, end_cell))
+        end_row = int(''.join(filter(str.isdigit, end_cell)))
+        
+        request = {
+            'repeatCell': {
+                'range': {
+                    'sheetId': 0,
+                    'startRowIndex': start_row - 1,
+                    'endRowIndex': end_row,
+                    'startColumnIndex': ord(start_col) - ord('A'),
+                    'endColumnIndex': ord(end_col) - ord('A') + 1
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'numberFormat': {
+                            'type': 'PERCENT',
+                            'pattern': '0.00%'
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat.numberFormat'
+            }
+        }
+        
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            body={'requests': [request]}
+        ).execute()
+    
+    def _format_number(self, range_name: str, decimals: int):
+        """Formatta come numero con decimali specificati"""
+        # Parsing del range (es. "Portfolio!B2:B7")
+        sheet_name, cell_range = range_name.split('!')
+        if ':' in cell_range:
+            start_cell, end_cell = cell_range.split(':')
+        else:
+            start_cell = end_cell = cell_range
+        
+        # Estrai colonna e riga
+        start_col = ''.join(filter(str.isalpha, start_cell))
+        start_row = int(''.join(filter(str.isdigit, start_cell)))
+        end_col = ''.join(filter(str.isalpha, end_cell))
+        end_row = int(''.join(filter(str.isdigit, end_cell)))
+        
+        pattern = f"#,##0.{'0' * decimals}"
+        request = {
+            'repeatCell': {
+                'range': {
+                    'sheetId': 0,
+                    'startRowIndex': start_row - 1,
+                    'endRowIndex': end_row,
+                    'startColumnIndex': ord(start_col) - ord('A'),
+                    'endColumnIndex': ord(end_col) - ord('A') + 1
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'numberFormat': {
+                            'type': 'NUMBER',
+                            'pattern': pattern
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat.numberFormat'
+            }
+        }
+        
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            body={'requests': [request]}
         ).execute()
 
 def setup_logging():
