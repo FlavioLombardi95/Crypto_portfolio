@@ -272,27 +272,29 @@ class BinanceManager:
                 return 0.0
     
     def _get_average_price(self, asset: str) -> float:
-        """Calcola prezzo medio di acquisto"""
+        """Calcola prezzo medio di acquisto (limitazione: non corrisponde al costo medio Binance)"""
         try:
-            # Prova a calcolare dai trade history
+            # Prova a calcolare dai trade history (limitato ai trade disponibili via API)
             trades = self.client.get_my_trades(symbol=f"{asset}USDT", limit=100)
             if not trades:
                 # Prova BTC
                 trades = self.client.get_my_trades(symbol=f"{asset}BTC", limit=100)
             
             if trades:
-                total_cost = sum(float(t['price']) * float(t['qty']) for t in trades if t['isBuyer'])
-                total_quantity = sum(float(t['qty']) for t in trades if t['isBuyer'])
-                
-                if total_quantity > 0:
-                    avg_price = total_cost / total_quantity
-                    self.logger.debug(f"Prezzo medio {asset}: {avg_price} USDT (da trade history)")
-                    return avg_price
+                buy_trades = [t for t in trades if t['isBuyer']]
+                if buy_trades:
+                    total_cost = sum(float(t['quoteQty']) for t in buy_trades)
+                    total_quantity = sum(float(t['qty']) for t in buy_trades)
+                    
+                    if total_quantity > 0:
+                        avg_price = total_cost / total_quantity
+                        self.logger.debug(f"Prezzo medio {asset}: {avg_price} USDT (da trade history limitato)")
+                        return avg_price
             
-            # Fallback: usa prezzo attuale
+            # Fallback: usa prezzo attuale (non è il costo medio reale)
             current_price = self._get_current_price(asset)
             if current_price > 0:
-                self.logger.debug(f"Asset {asset}: usando prezzo attuale come prezzo medio (nessun trade trovato)")
+                self.logger.debug(f"Asset {asset}: usando prezzo attuale (costo medio non disponibile via API)")
                 return current_price
             
             return 0.0

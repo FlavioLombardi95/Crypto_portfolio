@@ -10,6 +10,10 @@ Sistema automatizzato per il tracking del portafoglio crypto tramite Binance API
 - ⏱️ **Automazione GitHub Actions**: Esecuzione schedulata senza server
 - 🧠 **AI-Ready**: Base strutturata per analisi predittive future
 
+## ⚠️ Limitazioni Note
+
+- **Prezzo Medio**: Il "Prezzo Medio" calcolato non corrisponde al "Costo Medio" mostrato nel wallet Binance. Binance non fornisce l'API per questo dato interno. Il sistema usa i trade history disponibili o il prezzo attuale come fallback.
+
 ## 🛠️ Setup Rapido
 
 ### 1. Prerequisiti
