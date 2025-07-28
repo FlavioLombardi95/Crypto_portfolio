@@ -330,6 +330,14 @@ class BinanceClient:
             server_time = self.client.get_server_time()
             self.logger.info("✅ Connessione a Binance API riuscita")
             return True
+        except BinanceAPIException as e:
+            if "restricted location" in str(e).lower():
+                self.logger.error("❌ Binance non disponibile dalla posizione del server (restrizione geografica)")
+                self.logger.info("💡 Suggerimento: Usa USE_BINANCE_TESTNET=true per GitHub Actions")
+                return False
+            else:
+                self.logger.error(f"❌ Errore di connessione a Binance API: {e}")
+                return False
         except Exception as e:
             self.logger.error(f"❌ Errore di connessione a Binance API: {e}")
             return False 

@@ -47,6 +47,7 @@ def main():
         
         if not binance_client.test_connection():
             logger.error("❌ Connessione a Binance fallita")
+            logger.info("💡 Se sei su GitHub Actions, questo potrebbe essere dovuto a restrizioni geografiche")
             return False
         
         if not sheets_client.test_connection():
