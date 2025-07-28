@@ -162,8 +162,10 @@ class BinanceClient:
                     current_price = prices.get(asset, 0.0)
                     current_value = total_qty * current_price
                     
-                    # Per ora assumiamo prezzo medio = prezzo corrente
-                    avg_price = current_price
+                    # Recupera prezzo medio di acquisto dai trade history
+                    avg_price = self._get_average_purchase_price(asset)
+                    if avg_price == 0:
+                        avg_price = current_price  # Fallback al prezzo corrente
                     total_invested = total_qty * avg_price
                     
                     # Calcolo PnL
@@ -192,8 +194,10 @@ class BinanceClient:
                     current_price = prices.get(asset, 0.0)
                     current_value = total_amount * current_price
                     
-                    # Per Simple Earn, assumiamo prezzo medio = prezzo corrente
-                    avg_price = current_price
+                    # Per Simple Earn, recupera prezzo medio di acquisto
+                    avg_price = self._get_average_purchase_price(asset)
+                    if avg_price == 0:
+                        avg_price = current_price  # Fallback al prezzo corrente
                     total_invested = total_amount * avg_price
                     
                     # Calcolo PnL (inclusi i rewards)
@@ -246,12 +250,15 @@ class BinanceClient:
                 if item['total_invested'] > 0:
                     item['pnl_percentage'] = (item['pnl_euro'] / item['total_invested']) * 100
             
-            # Converti in lista e ordina per valore
+            # Converti in lista e filtra asset con valore < 1€
             final_data = list(combined_data.values())
-            final_data.sort(key=lambda x: x['current_value'], reverse=True)
+            filtered_data = [item for item in final_data if item['current_value'] >= 1.0]
             
-            self.logger.info(f"✅ Dati portafoglio elaborati per {len(final_data)} asset (Spot + Simple Earn)")
-            return final_data
+            # Ordina per valore attuale decrescente
+            filtered_data.sort(key=lambda x: x['current_value'], reverse=True)
+            
+            self.logger.info(f"✅ Dati portafoglio elaborati per {len(filtered_data)} asset (Spot + Simple Earn, valore >= 1€)")
+            return filtered_data
             
         except Exception as e:
             self.logger.error(f"❌ Errore nell'elaborazione dati portafoglio: {e}")
@@ -282,6 +289,40 @@ class BinanceClient:
         except BinanceAPIException as e:
             self.logger.error(f"❌ Errore nel recupero prezzi storici per {symbol}: {e}")
             return []
+    
+    def _get_average_purchase_price(self, asset: str) -> float:
+        """Calcola il prezzo medio di acquisto per un asset dai trade history"""
+        try:
+            # Prova prima con USDT
+            symbol = f"{asset}USDT"
+            trades = self.client.get_my_trades(symbol=symbol, limit=100)
+            
+            if not trades:
+                # Prova con BTC
+                symbol = f"{asset}BTC"
+                trades = self.client.get_my_trades(symbol=symbol, limit=100)
+            
+            if trades:
+                total_cost = 0.0
+                total_quantity = 0.0
+                
+                for trade in trades:
+                    if trade['isBuyer']:  # Solo acquisti
+                        price = float(trade['price'])
+                        quantity = float(trade['qty'])
+                        total_cost += price * quantity
+                        total_quantity += quantity
+                
+                if total_quantity > 0:
+                    avg_price = total_cost / total_quantity
+                    self.logger.debug(f"Prezzo medio {asset}: {avg_price}")
+                    return avg_price
+            
+            return 0.0  # Nessun trade trovato
+            
+        except Exception as e:
+            self.logger.debug(f"Impossibile calcolare prezzo medio per {asset}: {e}")
+            return 0.0
     
     def test_connection(self) -> bool:
         """Testa la connessione all'API di Binance"""
