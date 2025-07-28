@@ -442,7 +442,8 @@ class GoogleSheetsManager:
                     
                     total_invested = round(quantity * avg_price, 2)
                     pnl_usdt = round(current_value - total_invested, 2)
-                    pnl_percentage = round((pnl_usdt / total_invested * 100), 2) if total_invested > 0 else 0
+                    # PnL % già in percentuale, non moltiplicare per 100 (Google Sheets lo fa automaticamente)
+                    pnl_percentage = round((pnl_usdt / total_invested), 4) if total_invested > 0 else 0
                     
                     self.logger.debug(f"💰 {asset}: Calcoli automatici completati")
                     
@@ -503,9 +504,35 @@ class GoogleSheetsManager:
         if not portfolio_data:
             return
         
+        # Calcola totali dai dati del portfolio
         total_value = sum(item['current_value'] for item in portfolio_data)
-        total_invested = sum(item['total_invested'] for item in portfolio_data)
-        total_pnl = sum(item['pnl_euro'] for item in portfolio_data)
+        
+        # Calcola totali investiti e PnL dai prezzi medi esistenti
+        existing_prices = self._get_existing_prices()
+        total_invested = 0
+        total_pnl = 0
+        
+        for i, item in enumerate(portfolio_data, start=1):
+            existing_price = existing_prices.get(f"row_{i}", "")
+            if existing_price and existing_price.strip():
+                try:
+                    # Converti formato europeo (virgola) in formato americano (punto)
+                    price_str = existing_price.replace(',', '.')
+                    avg_price = float(price_str)
+                    quantity = item['quantity']
+                    current_value = item['current_value']
+                    
+                    invested = quantity * avg_price
+                    pnl = current_value - invested
+                    
+                    total_invested += invested
+                    total_pnl += pnl
+                    
+                except (ValueError, TypeError):
+                    pass
+        
+        # Calcola PnL % totale
+        total_pnl_percentage = (total_pnl / total_invested) if total_invested > 0 else 0
         
         summary_row = [
             "TOTALE",
@@ -514,7 +541,7 @@ class GoogleSheetsManager:
             "",
             round(total_value, 2),
             round(total_invested, 2),
-            round((total_pnl / total_invested * 100) if total_invested > 0 else 0, 2),
+            round(total_pnl_percentage, 4),  # Non moltiplicare per 100 (Google Sheets lo fa)
             round(total_pnl, 2),
             f"Spot: {len([i for i in portfolio_data if i['source'] == 'Spot'])} | Earn: {len([i for i in portfolio_data if i['source'] == 'Simple Earn'])}",
             "",
@@ -596,9 +623,9 @@ class GoogleSheetsManager:
             quantity_range = f"{Config.SHEET_NAME}!B2:B{data_rows+1}"
             self._format_number(quantity_range, 8)
             
-            # Formattazione prezzo medio (2 decimali)
+            # Formattazione prezzo medio (valuta USD)
             avg_price_range = f"{Config.SHEET_NAME}!C2:C{data_rows+1}"
-            self._format_number(avg_price_range, 2)
+            self._format_currency(avg_price_range)
             
             self.logger.info("✅ Formattazione applicata")
             
