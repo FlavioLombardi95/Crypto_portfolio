@@ -446,7 +446,8 @@ class GoogleSheetsManager:
                     # Se il prezzo medio non è un numero valido, lascia vuoto
                     pass
             
-            apr_value = round(item['apr'], 4)
+            # APR già in percentuale, non moltiplicare per 100 (Google Sheets lo fa automaticamente)
+            apr_value = round(item['apr'] / 100, 4)
             
             # Colonna A-B (Asset, Quantità)
             row_ab = [
