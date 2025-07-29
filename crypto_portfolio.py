@@ -95,7 +95,7 @@ class BinanceManager:
             return False
     
     def get_portfolio_data(self) -> List[Dict]:
-        """Recupera dati portafoglio completo (Spot + Simple Earn)"""
+        """Recupera dati portafoglio completo (Spot + Simple Earn) con validazione robusta"""
         try:
             portfolio_data = []
             
@@ -109,13 +109,41 @@ class BinanceManager:
             
             self.logger.info(f"📊 Asset totali trovati: {len(portfolio_data)}")
             
-            # 3. Filtra asset con valore >= 1€
-            filtered_data = [item for item in portfolio_data if item['current_value'] >= 1.0]
+            # 3. Validazione e pulizia dati
+            valid_data = []
+            for item in portfolio_data:
+                try:
+                    # Verifica che tutti i campi necessari siano presenti
+                    required_fields = ['asset', 'quantity', 'current_price', 'current_value']
+                    if all(field in item and item[field] is not None for field in required_fields):
+                        # Verifica che i valori siano numerici e positivi
+                        if (isinstance(item['quantity'], (int, float)) and item['quantity'] > 0 and
+                            isinstance(item['current_price'], (int, float)) and item['current_price'] > 0 and
+                            isinstance(item['current_value'], (int, float)) and item['current_value'] > 0):
+                            valid_data.append(item)
+                        else:
+                            self.logger.warning(f"⚠️ Dati non validi per {item.get('asset', 'Unknown')}: quantità={item.get('quantity')}, prezzo={item.get('current_price')}, valore={item.get('current_value')}")
+                    else:
+                        self.logger.warning(f"⚠️ Campi mancanti per asset: {item.get('asset', 'Unknown')}")
+                except Exception as e:
+                    self.logger.error(f"❌ Errore validazione asset {item.get('asset', 'Unknown')}: {e}")
+                    continue
             
-            # 4. Ordina per valore
+            # 4. Filtra asset con valore >= 1€
+            filtered_data = [item for item in valid_data if item['current_value'] >= 1.0]
+            
+            # 5. Ordina per valore
             filtered_data.sort(key=lambda x: x['current_value'], reverse=True)
             
+            # 6. Log dettagliato
+            self.logger.info(f"📊 Asset validi: {len(valid_data)}")
             self.logger.info(f"✅ Portfolio filtrato: {len(filtered_data)} asset (valore >= 1€)")
+            
+            # 7. Log asset trovati per debug
+            if filtered_data:
+                asset_list = [item['asset'] for item in filtered_data]
+                self.logger.info(f"📋 Asset nel portfolio: {', '.join(asset_list)}")
+            
             return filtered_data
             
         except Exception as e:
@@ -173,42 +201,154 @@ class BinanceManager:
             return []
     
     def _get_earn_data(self) -> List[Dict]:
-        """Recupera dati Simple Earn usando API REST diretta"""
+        """Recupera dati Simple Earn usando API REST diretta con retry e fallback robusti"""
         try:
             earn_data = []
             
             self.logger.info("🔍 Recupero Simple Earn con API REST diretta...")
             
-            # Recupera posizioni flexible
-            flexible_positions = self._get_simple_earn_positions('FLEXIBLE')
-            if flexible_positions:
-                earn_data.extend(flexible_positions)
-                self.logger.info(f"✅ Flexible positions: {len(flexible_positions)} posizioni")
+            # Strategia 1: Recupera tutte le posizioni (flexible + locked)
+            all_positions = self._get_all_simple_earn_positions()
+            if all_positions:
+                earn_data.extend(all_positions)
+                self.logger.info(f"✅ Posizioni totali recuperate: {len(all_positions)}")
             
-            # Recupera posizioni locked
-            locked_positions = self._get_simple_earn_positions('LOCKED')
-            if locked_positions:
-                earn_data.extend(locked_positions)
-                self.logger.info(f"✅ Locked positions: {len(locked_positions)} posizioni")
-            
-            # Fallback: controlla asset specifici mancanti
-            missing_assets = ['OP', 'SOL', 'ONDO', 'TAO']
+            # Strategia 2: Verifica asset noti e cerca quelli mancanti
+            known_assets = ['ARB', 'BNB', 'BTC', 'C', 'ERA', 'ETH', 'HAEDAL', 'HOME', 'HUMA', 'HYPER', 'OP', 'SOL', 'ONDO', 'TAO']
             found_assets = [item['asset'] for item in earn_data]
+            missing_assets = [asset for asset in known_assets if asset not in found_assets]
             
-            for asset in missing_assets:
-                if asset not in found_assets:
-                    self.logger.info(f"🔍 Controllo asset mancante: {asset}")
-                    # Prova a recuperare posizioni specifiche per questo asset
+            if missing_assets:
+                self.logger.info(f"🔍 Asset mancanti: {missing_assets}")
+                # Strategia 3: Ricerca specifica per asset mancanti
+                for asset in missing_assets:
+                    self.logger.info(f"🔍 Ricerca specifica per: {asset}")
                     specific_positions = self._get_simple_earn_asset_positions(asset)
                     if specific_positions:
                         earn_data.extend(specific_positions)
-                        self.logger.info(f"✅ Trovato {asset} in posizioni specifiche")
+                        self.logger.info(f"✅ Trovato {asset} in ricerca specifica")
+                    else:
+                        self.logger.warning(f"⚠️ Asset {asset} non trovato in Simple Earn")
             
-            self.logger.info(f"✅ Simple Earn: {len(earn_data)} posizioni totali")
-            return earn_data
+            # Rimuovi duplicati (se presenti)
+            unique_earn_data = []
+            seen_assets = set()
+            for item in earn_data:
+                if item['asset'] not in seen_assets:
+                    unique_earn_data.append(item)
+                    seen_assets.add(item['asset'])
+            
+            self.logger.info(f"✅ Simple Earn: {len(unique_earn_data)} posizioni uniche")
+            return unique_earn_data
             
         except Exception as e:
             self.logger.error(f"❌ Errore Simple Earn: {e}")
+            return []
+    
+    def _get_all_simple_earn_positions(self) -> List[Dict]:
+        """Recupera tutte le posizioni Simple Earn (flexible + locked) con retry logic"""
+        try:
+            import time
+            import hmac
+            import hashlib
+            import requests
+            
+            all_positions = []
+            
+            # Lista di endpoint da provare
+            endpoints = [
+                ('FLEXIBLE', 'https://api.binance.com/sapi/v1/simple-earn/flexible/position'),
+                ('LOCKED', 'https://api.binance.com/sapi/v1/simple-earn/locked/position')
+            ]
+            
+            for product_type, url in endpoints:
+                try:
+                    # Retry logic (3 tentativi)
+                    for attempt in range(3):
+                        try:
+                            # Parametri per la richiesta
+                            timestamp = int(time.time() * 1000)
+                            params = {
+                                'timestamp': timestamp
+                            }
+                            
+                            # Crea signature
+                            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+                            signature = hmac.new(
+                                Config.BINANCE_SECRET_KEY.encode('utf-8'),
+                                query_string.encode('utf-8'),
+                                hashlib.sha256
+                            ).hexdigest()
+                            
+                            headers = {
+                                'X-MBX-APIKEY': Config.BINANCE_API_KEY
+                            }
+                            
+                            # Aggiungi signature ai parametri
+                            params['signature'] = signature
+                            
+                            # Fai la richiesta con timeout
+                            response = requests.get(url, headers=headers, params=params, timeout=10)
+                            
+                            if response.status_code == 200:
+                                data = response.json()
+                                positions = []
+                                
+                                if 'rows' in data and data['rows']:
+                                    for pos in data['rows']:
+                                        asset = pos['asset']
+                                        amount = float(pos['totalAmount'])
+                                        
+                                        if amount > 0:
+                                            current_price = self._get_current_price(asset)
+                                            
+                                            if current_price > 0:
+                                                current_value = amount * current_price
+                                                avg_price = 0.0
+                                                total_invested = 0.0
+                                                pnl = 0.0
+                                                pnl_percentage = 0.0
+                                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                                
+                                                positions.append({
+                                                    'asset': asset,
+                                                    'quantity': amount,
+                                                    'avg_price': avg_price,
+                                                    'current_price': current_price,
+                                                    'current_value': current_value,
+                                                    'total_invested': total_invested,
+                                                    'pnl_percentage': pnl_percentage,
+                                                    'pnl_euro': pnl,
+                                                    'source': 'Simple Earn',
+                                                    'type': product_type.title(),
+                                                    'apr': apr
+                                                })
+                                                
+                                                self.logger.info(f"💰 {asset} ({product_type}): {amount} @ {current_price} = {current_value:.2f} USDT")
+                                
+                                all_positions.extend(positions)
+                                self.logger.info(f"✅ {product_type} positions: {len(positions)} posizioni")
+                                break  # Successo, esci dal retry loop
+                                
+                            else:
+                                self.logger.warning(f"⚠️ Tentativo {attempt + 1} fallito per {product_type}: {response.status_code}")
+                                if attempt < 2:  # Non è l'ultimo tentativo
+                                    time.sleep(1)  # Pausa prima del retry
+                                    
+                        except requests.exceptions.RequestException as e:
+                            self.logger.warning(f"⚠️ Errore di rete per {product_type} (tentativo {attempt + 1}): {e}")
+                            if attempt < 2:
+                                time.sleep(1)
+                            continue
+                            
+                except Exception as e:
+                    self.logger.error(f"❌ Errore recupero {product_type}: {e}")
+                    continue
+            
+            return all_positions
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore recupero tutte le posizioni: {e}")
             return []
     
     def _get_simple_earn_positions(self, product_type: str) -> List[Dict]:
@@ -294,7 +434,7 @@ class BinanceManager:
             return []
     
     def _get_simple_earn_asset_positions(self, asset: str) -> List[Dict]:
-        """Recupera posizioni Simple Earn per asset specifico"""
+        """Recupera posizioni Simple Earn per asset specifico con retry logic"""
         try:
             import time
             import hmac
@@ -303,81 +443,76 @@ class BinanceManager:
             
             positions = []
             
-            # Prova flexible positions per asset specifico
-            timestamp = int(time.time() * 1000)
-            params = {
-                'asset': asset,
-                'timestamp': timestamp
-            }
+            # Lista di endpoint da provare per questo asset
+            endpoints = [
+                ('FLEXIBLE', 'https://api.binance.com/sapi/v1/simple-earn/flexible/position'),
+                ('LOCKED', 'https://api.binance.com/sapi/v1/simple-earn/locked/position')
+            ]
             
-            # Crea signature
-            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
-            signature = hmac.new(
-                Config.BINANCE_SECRET_KEY.encode('utf-8'),
-                query_string.encode('utf-8'),
-                hashlib.sha256
-            ).hexdigest()
-            
-            # Prova flexible
-            url_flexible = f"https://api.binance.com/sapi/v1/simple-earn/flexible/position"
-            headers = {'X-MBX-APIKEY': Config.BINANCE_API_KEY}
-            params['signature'] = signature
-            
-            response = requests.get(url_flexible, headers=headers, params=params)
-            if response.status_code == 200:
-                data = response.json()
-                if 'rows' in data and data['rows']:
-                    for pos in data['rows']:
-                        amount = float(pos['totalAmount'])
-                        if amount > 0:
-                            current_price = self._get_current_price(asset)
-                            if current_price > 0:
-                                current_value = amount * current_price
-                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+            for product_type, url in endpoints:
+                try:
+                    # Retry logic (2 tentativi per asset specifico)
+                    for attempt in range(2):
+                        try:
+                            timestamp = int(time.time() * 1000)
+                            params = {
+                                'asset': asset,
+                                'timestamp': timestamp
+                            }
+                            
+                            # Crea signature
+                            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+                            signature = hmac.new(
+                                Config.BINANCE_SECRET_KEY.encode('utf-8'),
+                                query_string.encode('utf-8'),
+                                hashlib.sha256
+                            ).hexdigest()
+                            
+                            headers = {'X-MBX-APIKEY': Config.BINANCE_API_KEY}
+                            params['signature'] = signature
+                            
+                            # Fai la richiesta con timeout
+                            response = requests.get(url, headers=headers, params=params, timeout=10)
+                            
+                            if response.status_code == 200:
+                                data = response.json()
+                                if 'rows' in data and data['rows']:
+                                    for pos in data['rows']:
+                                        amount = float(pos['totalAmount'])
+                                        if amount > 0:
+                                            current_price = self._get_current_price(asset)
+                                            if current_price > 0:
+                                                current_value = amount * current_price
+                                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                                
+                                                positions.append({
+                                                    'asset': asset,
+                                                    'quantity': amount,
+                                                    'avg_price': 0.0,
+                                                    'current_price': current_price,
+                                                    'current_value': current_value,
+                                                    'total_invested': 0.0,
+                                                    'pnl_percentage': 0.0,
+                                                    'pnl_euro': 0.0,
+                                                    'source': 'Simple Earn',
+                                                    'type': product_type.title(),
+                                                    'apr': apr
+                                                })
+                                                self.logger.info(f"💰 {asset} ({product_type} specifico): {amount} @ {current_price} = {current_value:.2f} USDT")
+                                break  # Successo, esci dal retry loop
                                 
-                                positions.append({
-                                    'asset': asset,
-                                    'quantity': amount,
-                                    'avg_price': 0.0,
-                                    'current_price': current_price,
-                                    'current_value': current_value,
-                                    'total_invested': 0.0,
-                                    'pnl_percentage': 0.0,
-                                    'pnl_euro': 0.0,
-                                    'source': 'Simple Earn',
-                                    'type': 'Flexible',
-                                    'apr': apr
-                                })
-                                self.logger.info(f"💰 {asset} (Flexible specifico): {amount} @ {current_price} = {current_value:.2f} USDT")
-            
-            # Prova locked
-            url_locked = f"https://api.binance.com/sapi/v1/simple-earn/locked/position"
-            response = requests.get(url_locked, headers=headers, params=params)
-            if response.status_code == 200:
-                data = response.json()
-                if 'rows' in data and data['rows']:
-                    for pos in data['rows']:
-                        amount = float(pos['totalAmount'])
-                        if amount > 0:
-                            current_price = self._get_current_price(asset)
-                            if current_price > 0:
-                                current_value = amount * current_price
-                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                                
-                                positions.append({
-                                    'asset': asset,
-                                    'quantity': amount,
-                                    'avg_price': 0.0,
-                                    'current_price': current_price,
-                                    'current_value': current_value,
-                                    'total_invested': 0.0,
-                                    'pnl_percentage': 0.0,
-                                    'pnl_euro': 0.0,
-                                    'source': 'Simple Earn',
-                                    'type': 'Locked',
-                                    'apr': apr
-                                })
-                                self.logger.info(f"💰 {asset} (Locked specifico): {amount} @ {current_price} = {current_value:.2f} USDT")
+                            else:
+                                if attempt < 1:  # Non è l'ultimo tentativo
+                                    time.sleep(0.5)  # Pausa breve
+                                    
+                        except requests.exceptions.RequestException as e:
+                            if attempt < 1:
+                                time.sleep(0.5)
+                            continue
+                            
+                except Exception as e:
+                    self.logger.debug(f"⚠️ Errore per {asset} ({product_type}): {e}")
+                    continue
             
             return positions
             
@@ -390,26 +525,47 @@ class BinanceManager:
             return []
     
     def _get_current_price(self, asset: str) -> float:
-        """Ottiene prezzo attuale per asset"""
+        """Ottiene prezzo attuale per asset con cache"""
         try:
-            # Prova USDT
-            ticker = self.client.get_symbol_ticker(symbol=f"{asset}USDT")
-            price = float(ticker['price'])
-            self.logger.debug(f"✅ Prezzo {asset}: {price} USDT")
-            return price
-        except Exception as e:
+            import time
+            
+            # Cache dei prezzi per ridurre chiamate API
+            if not hasattr(self, '_price_cache'):
+                self._price_cache = {}
+            
+            # Controlla se il prezzo è in cache e non è troppo vecchio (5 minuti)
+            current_time = time.time()
+            if asset in self._price_cache:
+                cached_price, cached_time = self._price_cache[asset]
+                if current_time - cached_time < 300:  # 5 minuti
+                    return cached_price
+            
+            # Recupera nuovo prezzo
             try:
-                # Prova BTC
-                ticker = self.client.get_symbol_ticker(symbol=f"{asset}BTC")
-                btc_price = float(ticker['price'])
-                # Converti BTC in USDT
-                btc_usdt = self.client.get_symbol_ticker(symbol="BTCUSDT")
-                price = btc_price * float(btc_usdt['price'])
-                self.logger.debug(f"✅ Prezzo {asset}: {price} USDT (via BTC)")
-                return price
-            except Exception as e2:
-                self.logger.debug(f"⚠️ Prezzo non trovato per {asset}: USDT={e}, BTC={e2}")
-                return 0.0
+                # Prova USDT
+                ticker = self.client.get_symbol_ticker(symbol=f"{asset}USDT")
+                price = float(ticker['price'])
+                self.logger.debug(f"✅ Prezzo {asset}: {price} USDT")
+            except Exception as e:
+                try:
+                    # Prova BTC
+                    ticker = self.client.get_symbol_ticker(symbol=f"{asset}BTC")
+                    btc_price = float(ticker['price'])
+                    # Converti BTC in USDT
+                    btc_usdt = self.client.get_symbol_ticker(symbol="BTCUSDT")
+                    price = btc_price * float(btc_usdt['price'])
+                    self.logger.debug(f"✅ Prezzo {asset}: {price} USDT (via BTC)")
+                except Exception as e2:
+                    self.logger.debug(f"⚠️ Prezzo non trovato per {asset}: USDT={e}, BTC={e2}")
+                    return 0.0
+            
+            # Salva in cache
+            self._price_cache[asset] = (price, current_time)
+            return price
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore recupero prezzo {asset}: {e}")
+            return 0.0
     
     def _get_average_price(self, asset: str) -> float:
         """Calcola prezzo medio di acquisto (limitazione: non corrisponde al costo medio Binance)"""
