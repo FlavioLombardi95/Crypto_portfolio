@@ -1,11 +1,7 @@
-name: Update Crypto Portfolio
+name: Update Crypto Portfolio (Manual Only)
 
 on:
-  schedule:
-    # Esegui ogni ora
-    - cron: '0 * * * *'
-  
-  # Permette l'esecuzione manuale
+  # Solo esecuzione manuale
   workflow_dispatch:
     inputs:
       force_update:
@@ -13,18 +9,10 @@ on:
         required: false
         default: false
         type: boolean
-      use_alternative_api:
-        description: 'Usa API alternative per bypassare restrizioni'
-        required: false
-        default: true
-        type: boolean
 
 jobs:
   update-portfolio:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        region: [us-east-1, us-west-2, europe-west1, asia-southeast1]
     
     steps:
     - name: Checkout repository
@@ -40,67 +28,15 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
-    - name: Run portfolio update with retry
+    - name: Run portfolio update
       env:
         BINANCE_API_KEY: ${{ secrets.BINANCE_API_KEY }}
         BINANCE_SECRET_KEY: ${{ secrets.BINANCE_SECRET_KEY }}
         GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
         GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
-        # Prova diversi endpoint Binance
-        BINANCE_API_URL: "https://api.binance.com"
-        # Cloudflare Proxy (se configurato)
-        CLOUDFLARE_PROXY_URL: ${{ secrets.CLOUDFLARE_PROXY_URL }}
       run: |
-        # Retry logic con diversi endpoint e fallback
-        endpoints=("https://api.binance.com" "https://api1.binance.com" "https://api2.binance.com" "https://api3.binance.com")
-        
-        # Prova endpoint Binance principali
-        for endpoint in "${endpoints[@]}"; do
-          echo "🌐 Provando endpoint Binance: $endpoint"
-          export BINANCE_API_URL="$endpoint"
-          
-          for attempt in {1..2}; do
-            echo "🔄 Tentativo $attempt di 2 per $endpoint..."
-            if python crypto_portfolio.py; then
-              echo "✅ Esecuzione completata con successo su $endpoint!"
-              exit 0
-            else
-              echo "⚠️ Tentativo $attempt fallito per $endpoint"
-              if [ $attempt -lt 2 ]; then
-                echo "⏳ Attendo 15 secondi..."
-                sleep 15
-              fi
-            fi
-          done
-        done
-        
-        # Fallback: prova con Cloudflare Proxy
-        if [ -n "$CLOUDFLARE_PROXY_URL" ]; then
-          echo "🌐 Tentativo con Cloudflare Proxy: $CLOUDFLARE_PROXY_URL"
-          for attempt in {1..3}; do
-            echo "🔄 Tentativo $attempt di 3 con Cloudflare Proxy..."
-            if python crypto_portfolio.py; then
-              echo "✅ Esecuzione completata con successo via Cloudflare Proxy!"
-              exit 0
-            else
-              echo "⚠️ Tentativo $attempt fallito con Cloudflare Proxy"
-              if [ $attempt -lt 3 ]; then
-                echo "⏳ Attendo 10 secondi..."
-                sleep 10
-              fi
-            fi
-          done
-        fi
-        
-        # Fallback finale: prova con configurazione alternativa
-        echo "🔄 Prova con fallback finale..."
-        if [ "${{ github.event.inputs.use_alternative_api }}" == "true" ]; then
-          echo "🌐 Tentativo con configurazione alternativa..."
-          python crypto_portfolio.py || echo "⚠️ Anche il fallback finale ha fallito"
-        fi
-        
-        echo "❌ Tutti i tentativi hanno fallito"
-        exit 1
+        echo "🚀 Esecuzione manuale portfolio update"
+        python crypto_portfolio.py
         
     - name: Upload logs
       uses: actions/upload-artifact@v4

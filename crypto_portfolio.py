@@ -74,26 +74,8 @@ class BinanceManager:
     """Gestore per Binance API"""
     
     def __init__(self):
-        # Supporta endpoint dinamici e proxy per bypassare restrizioni geografiche
-        api_url = os.getenv('BINANCE_API_URL', 'https://api.binance.com')
-        cloudflare_proxy = os.getenv('CLOUDFLARE_PROXY_URL')
-        
         self.logger = logging.getLogger('Binance')
-        
-        if cloudflare_proxy:
-            self.logger.info(f"🌐 Usando Cloudflare Proxy: {cloudflare_proxy}")
-            # Usa il proxy Cloudflare per bypassare restrizioni
-            self._use_cloudflare_proxy = True
-            self._proxy_url = cloudflare_proxy
-        else:
-            self.logger.info(f"🌐 Usando endpoint Binance: {api_url}")
-            self._use_cloudflare_proxy = False
-        
-        # Il client python-binance non supporta base_url, usiamo il default
         self.client = Client(Config.BINANCE_API_KEY, Config.BINANCE_SECRET_KEY)
-        
-        # Per ora usiamo il client standard, le alternative sono nel GitHub Action
-        self.logger.info("💡 Endpoint alternativi gestiti nel GitHub Action workflow")
     
     def test_connection(self) -> bool:
         """Testa connessione Binance"""
