@@ -177,81 +177,178 @@ class BinanceManager:
         try:
             earn_data = []
             
-            # Lista asset da controllare (basata sui test precedenti)
-            assets_to_check = ['ARB', 'BNB', 'BTC', 'C', 'ERA', 'ETH', 'HAEDAL', 'HOME', 'HUMA', 'HYPER', 'SOL', 'TAO', 'OP', 'ONDO']
-            
-            # Controlla ogni asset individualmente
-            for asset in assets_to_check:
+            # Prova prima a ottenere tutte le posizioni Simple Earn
+            try:
+                # Prova diversi metodi per Simple Earn
+                self.logger.info("🔍 Tentativo recupero Simple Earn...")
+                
+                # Metodo 1: get_simple_earn_flexible_product_position
                 try:
-                    # Flexible positions per asset specifico
-                    flexible = self.client.get_simple_earn_flexible_product_position(asset=asset)
-                    
-                    if flexible and flexible.get('rows'):
-                        for pos in flexible['rows']:
-                            amount = float(pos['totalAmount'])
+                    flexible_all = self.client.get_simple_earn_flexible_product_position()
+                    self.logger.info(f"✅ Metodo 1 funziona: {len(flexible_all.get('rows', []))} posizioni")
+                except:
+                    # Metodo 2: get_simple_earn_flexible_position
+                    try:
+                        flexible_all = self.client.get_simple_earn_flexible_position()
+                        self.logger.info(f"✅ Metodo 2 funziona: {len(flexible_all.get('rows', []))} posizioni")
+                    except:
+                        # Metodo 3: get_simple_earn_flexible_product_position senza parametri
+                        try:
+                            flexible_all = self.client.get_simple_earn_flexible_product_position()
+                            self.logger.info(f"✅ Metodo 3 funziona: {len(flexible_all.get('rows', []))} posizioni")
+                        except Exception as e3:
+                            self.logger.warning(f"⚠️ Tutti i metodi flexible falliti: {e3}")
+                            flexible_all = None
+                
+                if flexible_all and flexible_all.get('rows'):
+                    for pos in flexible_all['rows']:
+                        asset = pos['asset']
+                        amount = float(pos['totalAmount'])
+                        
+                        if amount > 0:
+                            current_price = self._get_current_price(asset)
                             
-                            if amount > 0:
-                                current_price = self._get_current_price(asset)
+                            if current_price > 0:
+                                current_value = amount * current_price
+                                avg_price = 0.0
+                                total_invested = 0.0
+                                pnl = 0.0
+                                pnl_percentage = 0.0
+                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
                                 
-                                if current_price > 0:
-                                    current_value = amount * current_price
-                                    # Prezzo medio lasciato vuoto per inserimento manuale
-                                    avg_price = 0.0
-                                    total_invested = 0.0  # Calcolato dall'utente
-                                    pnl = 0.0  # Calcolato dall'utente
-                                    pnl_percentage = 0.0  # Calcolato dall'utente
-                                    apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                                    
-                                    earn_data.append({
-                                        'asset': asset,
-                                        'quantity': amount,
-                                        'avg_price': avg_price,
-                                        'current_price': current_price,
-                                        'current_value': current_value,
-                                        'total_invested': total_invested,
-                                        'pnl_percentage': pnl_percentage,
-                                        'pnl_euro': pnl,
-                                        'source': 'Simple Earn',
-                                        'type': 'Flexible',
-                                        'apr': apr
-                                    })
-                    
-                    # Locked positions per asset specifico
-                    locked = self.client.get_simple_earn_locked_product_position(asset=asset)
-                    
-                    if locked and locked.get('rows'):
-                        for pos in locked['rows']:
-                            amount = float(pos['totalAmount'])
+                                earn_data.append({
+                                    'asset': asset,
+                                    'quantity': amount,
+                                    'avg_price': avg_price,
+                                    'current_price': current_price,
+                                    'current_value': current_value,
+                                    'total_invested': total_invested,
+                                    'pnl_percentage': pnl_percentage,
+                                    'pnl_euro': pnl,
+                                    'source': 'Simple Earn',
+                                    'type': 'Flexible',
+                                    'apr': apr
+                                })
+                                self.logger.info(f"💰 {asset}: {amount} @ {current_price} = {current_value:.2f} USDT")
+                
+                # Stesso approccio per locked positions
+                try:
+                    locked_all = self.client.get_simple_earn_locked_product_position()
+                    self.logger.info(f"✅ Locked positions: {len(locked_all.get('rows', []))} posizioni")
+                except:
+                    try:
+                        locked_all = self.client.get_simple_earn_locked_position()
+                        self.logger.info(f"✅ Locked positions (metodo 2): {len(locked_all.get('rows', []))} posizioni")
+                    except Exception as e2:
+                        self.logger.warning(f"⚠️ Metodi locked falliti: {e2}")
+                        locked_all = None
+                
+                if locked_all and locked_all.get('rows'):
+                    for pos in locked_all['rows']:
+                        asset = pos['asset']
+                        amount = float(pos['totalAmount'])
+                        
+                        if amount > 0:
+                            current_price = self._get_current_price(asset)
                             
-                            if amount > 0:
-                                current_price = self._get_current_price(asset)
+                            if current_price > 0:
+                                current_value = amount * current_price
+                                avg_price = 0.0
+                                total_invested = 0.0
+                                pnl = 0.0
+                                pnl_percentage = 0.0
+                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
                                 
-                                if current_price > 0:
-                                    current_value = amount * current_price
-                                    # Prezzo medio lasciato vuoto per inserimento manuale
-                                    avg_price = 0.0
-                                    total_invested = 0.0  # Calcolato dall'utente
-                                    pnl = 0.0  # Calcolato dall'utente
-                                    pnl_percentage = 0.0  # Calcolato dall'utente
-                                    apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                earn_data.append({
+                                    'asset': asset,
+                                    'quantity': amount,
+                                    'avg_price': avg_price,
+                                    'current_price': current_price,
+                                    'current_value': current_value,
+                                    'total_invested': total_invested,
+                                    'pnl_percentage': pnl_percentage,
+                                    'pnl_euro': pnl,
+                                    'source': 'Simple Earn',
+                                    'type': 'Locked',
+                                    'apr': apr
+                                })
+                                self.logger.info(f"💰 {asset}: {amount} @ {current_price} = {current_value:.2f} USDT")
+                                
+            except Exception as e:
+                self.logger.warning(f"⚠️ Errore nel recupero Simple Earn generale: {e}")
+                
+                # Fallback: usa lista hardcoded
+                assets_to_check = ['ARB', 'BNB', 'BTC', 'C', 'ERA', 'ETH', 'HAEDAL', 'HOME', 'HUMA', 'HYPER', 'SOL', 'TAO', 'OP', 'ONDO']
+                
+                for asset in assets_to_check:
+                    try:
+                        # Flexible positions per asset specifico
+                        flexible = self.client.get_simple_earn_flexible_product_position(asset=asset)
+                        
+                        if flexible and flexible.get('rows'):
+                            for pos in flexible['rows']:
+                                amount = float(pos['totalAmount'])
+                                
+                                if amount > 0:
+                                    current_price = self._get_current_price(asset)
                                     
-                                    earn_data.append({
-                                        'asset': asset,
-                                        'quantity': amount,
-                                        'avg_price': avg_price,
-                                        'current_price': current_price,
-                                        'current_value': current_value,
-                                        'total_invested': total_invested,
-                                        'pnl_percentage': pnl_percentage,
-                                        'pnl_euro': pnl,
-                                        'source': 'Simple Earn',
-                                        'type': 'Locked',
-                                        'apr': apr
-                                    })
+                                    if current_price > 0:
+                                        current_value = amount * current_price
+                                        avg_price = 0.0
+                                        total_invested = 0.0
+                                        pnl = 0.0
+                                        pnl_percentage = 0.0
+                                        apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                        
+                                        earn_data.append({
+                                            'asset': asset,
+                                            'quantity': amount,
+                                            'avg_price': avg_price,
+                                            'current_price': current_price,
+                                            'current_value': current_value,
+                                            'total_invested': total_invested,
+                                            'pnl_percentage': pnl_percentage,
+                                            'pnl_euro': pnl,
+                                            'source': 'Simple Earn',
+                                            'type': 'Flexible',
+                                            'apr': apr
+                                        })
+                        
+                        # Locked positions per asset specifico
+                        locked = self.client.get_simple_earn_locked_product_position(asset=asset)
+                        
+                        if locked and locked.get('rows'):
+                            for pos in locked['rows']:
+                                amount = float(pos['totalAmount'])
+                                
+                                if amount > 0:
+                                    current_price = self._get_current_price(asset)
                                     
-                except Exception as e:
-                    self.logger.debug(f"Error processing {asset}: {e}")
-                    continue
+                                    if current_price > 0:
+                                        current_value = amount * current_price
+                                        avg_price = 0.0
+                                        total_invested = 0.0
+                                        pnl = 0.0
+                                        pnl_percentage = 0.0
+                                        apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                        
+                                        earn_data.append({
+                                            'asset': asset,
+                                            'quantity': amount,
+                                            'avg_price': avg_price,
+                                            'current_price': current_price,
+                                            'current_value': current_value,
+                                            'total_invested': total_invested,
+                                            'pnl_percentage': pnl_percentage,
+                                            'pnl_euro': pnl,
+                                            'source': 'Simple Earn',
+                                            'type': 'Locked',
+                                            'apr': apr
+                                        })
+                                        
+                    except Exception as e:
+                        self.logger.debug(f"Error processing {asset}: {e}")
+                        continue
             
             self.logger.info(f"✅ Simple Earn: {len(earn_data)} posizioni")
             return earn_data
@@ -399,14 +496,29 @@ class GoogleSheetsManager:
         self.logger.info("🧹 Foglio pulito (colonna C preservata)")
     
     def _write_headers(self):
-        """Scrive intestazioni"""
-        range_name = f"{Config.SHEET_NAME}!A1:L1"
-        body = {'values': [Config.HEADERS]}
+        """Scrive intestazioni (escludendo colonna C)"""
+        # Scrivi solo colonne A-B e D-L (escludendo C)
+        headers_ab = [Config.HEADERS[0], Config.HEADERS[1]]  # A-B
+        headers_dl = Config.HEADERS[3:]  # D-L (escludendo C)
+        
+        # Scrivi colonne A-B
+        range_ab = f"{Config.SHEET_NAME}!A1:B1"
+        body_ab = {'values': [headers_ab]}
         self.service.spreadsheets().values().update(
             spreadsheetId=Config.GOOGLE_SHEET_ID,
-            range=range_name,
+            range=range_ab,
             valueInputOption='RAW',
-            body=body
+            body=body_ab
+        ).execute()
+        
+        # Scrivi colonne D-L
+        range_dl = f"{Config.SHEET_NAME}!D1:L1"
+        body_dl = {'values': [headers_dl]}
+        self.service.spreadsheets().values().update(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            range=range_dl,
+            valueInputOption='RAW',
+            body=body_dl
         ).execute()
     
     def _write_data(self, portfolio_data: List[Dict]):
@@ -434,8 +546,10 @@ class GoogleSheetsManager:
             
             if existing_price and existing_price.strip():
                 try:
+                    # Pulisci il prezzo da simboli di valuta e spazi
+                    price_str = existing_price.replace('$', '').replace('€', '').replace(' ', '').strip()
                     # Converti formato europeo (virgola) in formato americano (punto)
-                    price_str = existing_price.replace(',', '.')
+                    price_str = price_str.replace(',', '.')
                     avg_price = float(price_str)
                     quantity = item['quantity']
                     current_value = item['current_value']
@@ -516,8 +630,10 @@ class GoogleSheetsManager:
             existing_price = existing_prices.get(f"row_{i}", "")
             if existing_price and existing_price.strip():
                 try:
+                    # Pulisci il prezzo da simboli di valuta e spazi
+                    price_str = existing_price.replace('$', '').replace('€', '').replace(' ', '').strip()
                     # Converti formato europeo (virgola) in formato americano (punto)
-                    price_str = existing_price.replace(',', '.')
+                    price_str = price_str.replace(',', '.')
                     avg_price = float(price_str)
                     quantity = item['quantity']
                     current_value = item['current_value']
@@ -724,118 +840,180 @@ class GoogleSheetsManager:
         ).execute()
     
     def _format_header_bold(self):
-        """Formatta header (riga 1) in bold"""
-        request = {
-            'repeatCell': {
-                'range': {
-                    'sheetId': 0,
-                    'startRowIndex': 0,
-                    'endRowIndex': 1,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': 12  # Colonne A-L
-                },
-                'cell': {
-                    'userEnteredFormat': {
-                        'textFormat': {
-                            'bold': True
+        """Formatta header (riga 1) in bold (escludendo colonna C)"""
+        try:
+            # Formatta colonne A-B
+            request_ab = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': 0,
+                        'startRowIndex': 0,
+                        'endRowIndex': 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 2  # Colonne A-B
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'textFormat': {
+                                'bold': True
+                            }
                         }
-                    }
-                },
-                'fields': 'userEnteredFormat.textFormat.bold'
+                    },
+                    'fields': 'userEnteredFormat.textFormat.bold'
+                }
             }
-        }
-        
-        self.service.spreadsheets().batchUpdate(
-            spreadsheetId=Config.GOOGLE_SHEET_ID,
-            body={'requests': [request]}
-        ).execute()
+            
+            # Formatta colonne D-L
+            request_dl = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': 0,
+                        'startRowIndex': 0,
+                        'endRowIndex': 1,
+                        'startColumnIndex': 3,
+                        'endColumnIndex': 12  # Colonne D-L
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'textFormat': {
+                                'bold': True
+                            }
+                        }
+                    },
+                    'fields': 'userEnteredFormat.textFormat.bold'
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request_ab, request_dl]}
+            ).execute()
+            
+            self.logger.info("✅ Header bold applicato (colonna C preservata)")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione header bold: {e}")
     
     def _format_summary_bold(self, data_rows: int):
-        """Formatta riga totali in bold"""
-        summary_row = data_rows + 3  # Riga dopo i dati + 1 riga vuota
-        
-        request = {
-            'repeatCell': {
-                'range': {
-                    'sheetId': 0,
-                    'startRowIndex': summary_row - 1,
-                    'endRowIndex': summary_row,
-                    'startColumnIndex': 0,
-                    'endColumnIndex': 12  # Colonne A-L
-                },
-                'cell': {
-                    'userEnteredFormat': {
-                        'textFormat': {
-                            'bold': True
+        """Formatta riga totali in bold (escludendo colonna C)"""
+        try:
+            summary_row = data_rows + 3  # Riga dopo i dati + 1 riga vuota
+            
+            # Formatta colonne A-B
+            request_ab = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': 0,
+                        'startRowIndex': summary_row - 1,
+                        'endRowIndex': summary_row,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 2  # Colonne A-B
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'textFormat': {
+                                'bold': True
+                            }
                         }
-                    }
-                },
-                'fields': 'userEnteredFormat.textFormat.bold'
+                    },
+                    'fields': 'userEnteredFormat.textFormat.bold'
+                }
             }
-        }
-        
-        self.service.spreadsheets().batchUpdate(
-            spreadsheetId=Config.GOOGLE_SHEET_ID,
-            body={'requests': [request]}
-        ).execute()
+            
+            # Formatta colonne D-L
+            request_dl = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': 0,
+                        'startRowIndex': summary_row - 1,
+                        'endRowIndex': summary_row,
+                        'startColumnIndex': 3,
+                        'endColumnIndex': 12  # Colonne D-L
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'textFormat': {
+                                'bold': True
+                            }
+                        }
+                    },
+                    'fields': 'userEnteredFormat.textFormat.bold'
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request_ab, request_dl]}
+            ).execute()
+            
+            self.logger.info(f"✅ Summary bold applicato (riga {summary_row}, colonna C preservata)")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione summary bold: {e}")
     
     def _format_conditional_pnl(self, data_rows: int):
         """Applica formattazione condizionale alla colonna PnL % (G)"""
-        # Range per la colonna PnL % (escludendo header e summary)
-        pnl_range = f"{Config.SHEET_NAME}!G2:G{data_rows+1}"
-        
-        # Formattazione percentuale base
-        self._format_percentage(pnl_range)
-        
-        # Formattazione condizionale: rosso per perdite, verde per profitti
-        # Scala da -100% a 100%
-        request = {
-            'addConditionalFormatRule': {
-                'rule': {
-                    'ranges': [{
-                        'sheetId': 0,
-                        'startRowIndex': 1,  # Riga 2 (dopo header)
-                        'endRowIndex': data_rows + 1,
-                        'startColumnIndex': 6,  # Colonna G
-                        'endColumnIndex': 7
-                    }],
-                    'gradientRule': {
-                        'minpoint': {
-                            'color': {
-                                'red': 1.0,    # Rosso
-                                'green': 0.0,
-                                'blue': 0.0
+        try:
+            # Range per la colonna PnL % (escludendo header e summary)
+            pnl_range = f"{Config.SHEET_NAME}!G2:G{data_rows+1}"
+            
+            # Formattazione percentuale base
+            self._format_percentage(pnl_range)
+            
+            # Formattazione condizionale: rosso per perdite, verde per profitti
+            # Scala da -100% a 100%
+            request = {
+                'addConditionalFormatRule': {
+                    'rule': {
+                        'ranges': [{
+                            'sheetId': 0,
+                            'startRowIndex': 1,  # Riga 2 (dopo header)
+                            'endRowIndex': data_rows + 1,
+                            'startColumnIndex': 6,  # Colonna G
+                            'endColumnIndex': 7
+                        }],
+                        'gradientRule': {
+                            'minpoint': {
+                                'color': {
+                                    'red': 1.0,    # Rosso
+                                    'green': 0.0,
+                                    'blue': 0.0
+                                },
+                                'type': 'NUMBER',
+                                'value': '-1'  # -100%
                             },
-                            'type': 'NUMBER',
-                            'value': '-1'  # -100%
-                        },
-                        'midpoint': {
-                            'color': {
-                                'red': 1.0,    # Bianco
-                                'green': 1.0,
-                                'blue': 1.0
+                            'midpoint': {
+                                'color': {
+                                    'red': 1.0,    # Bianco
+                                    'green': 1.0,
+                                    'blue': 1.0
+                                },
+                                'type': 'NUMBER',
+                                'value': '0'   # 0%
                             },
-                            'type': 'NUMBER',
-                            'value': '0'   # 0%
-                        },
-                        'maxpoint': {
-                            'color': {
-                                'red': 0.0,    # Verde
-                                'green': 1.0,
-                                'blue': 0.0
-                            },
-                            'type': 'NUMBER',
-                            'value': '1'   # 100%
+                            'maxpoint': {
+                                'color': {
+                                    'red': 0.0,    # Verde
+                                    'green': 1.0,
+                                    'blue': 0.0
+                                },
+                                'type': 'NUMBER',
+                                'value': '1'   # 100%
+                            }
                         }
                     }
                 }
             }
-        }
-        
-        self.service.spreadsheets().batchUpdate(
-            spreadsheetId=Config.GOOGLE_SHEET_ID,
-            body={'requests': [request]}
-        ).execute()
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request]}
+            ).execute()
+            
+            self.logger.info("✅ Formattazione condizionale PnL % applicata")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione condizionale PnL %: {e}")
     
     def _format_number(self, range_name: str, decimals: int):
         """Formatta come numero con decimali specificati"""
