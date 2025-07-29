@@ -191,6 +191,19 @@ class BinanceManager:
                 earn_data.extend(locked_positions)
                 self.logger.info(f"✅ Locked positions: {len(locked_positions)} posizioni")
             
+            # Fallback: controlla asset specifici mancanti
+            missing_assets = ['OP', 'SOL', 'ONDO', 'TAO']
+            found_assets = [item['asset'] for item in earn_data]
+            
+            for asset in missing_assets:
+                if asset not in found_assets:
+                    self.logger.info(f"🔍 Controllo asset mancante: {asset}")
+                    # Prova a recuperare posizioni specifiche per questo asset
+                    specific_positions = self._get_simple_earn_asset_positions(asset)
+                    if specific_positions:
+                        earn_data.extend(specific_positions)
+                        self.logger.info(f"✅ Trovato {asset} in posizioni specifiche")
+            
             self.logger.info(f"✅ Simple Earn: {len(earn_data)} posizioni totali")
             return earn_data
             
@@ -209,7 +222,6 @@ class BinanceManager:
             # Parametri per la richiesta
             timestamp = int(time.time() * 1000)
             params = {
-                'product': product_type,
                 'timestamp': timestamp
             }
             
@@ -279,6 +291,98 @@ class BinanceManager:
                 
         except Exception as e:
             self.logger.error(f"❌ Errore recupero posizioni {product_type}: {e}")
+            return []
+    
+    def _get_simple_earn_asset_positions(self, asset: str) -> List[Dict]:
+        """Recupera posizioni Simple Earn per asset specifico"""
+        try:
+            import time
+            import hmac
+            import hashlib
+            import requests
+            
+            positions = []
+            
+            # Prova flexible positions per asset specifico
+            timestamp = int(time.time() * 1000)
+            params = {
+                'asset': asset,
+                'timestamp': timestamp
+            }
+            
+            # Crea signature
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(
+                Config.BINANCE_SECRET_KEY.encode('utf-8'),
+                query_string.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            # Prova flexible
+            url_flexible = f"https://api.binance.com/sapi/v1/simple-earn/flexible/position"
+            headers = {'X-MBX-APIKEY': Config.BINANCE_API_KEY}
+            params['signature'] = signature
+            
+            response = requests.get(url_flexible, headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                if 'rows' in data and data['rows']:
+                    for pos in data['rows']:
+                        amount = float(pos['totalAmount'])
+                        if amount > 0:
+                            current_price = self._get_current_price(asset)
+                            if current_price > 0:
+                                current_value = amount * current_price
+                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                
+                                positions.append({
+                                    'asset': asset,
+                                    'quantity': amount,
+                                    'avg_price': 0.0,
+                                    'current_price': current_price,
+                                    'current_value': current_value,
+                                    'total_invested': 0.0,
+                                    'pnl_percentage': 0.0,
+                                    'pnl_euro': 0.0,
+                                    'source': 'Simple Earn',
+                                    'type': 'Flexible',
+                                    'apr': apr
+                                })
+                                self.logger.info(f"💰 {asset} (Flexible specifico): {amount} @ {current_price} = {current_value:.2f} USDT")
+            
+            # Prova locked
+            url_locked = f"https://api.binance.com/sapi/v1/simple-earn/locked/position"
+            response = requests.get(url_locked, headers=headers, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                if 'rows' in data and data['rows']:
+                    for pos in data['rows']:
+                        amount = float(pos['totalAmount'])
+                        if amount > 0:
+                            current_price = self._get_current_price(asset)
+                            if current_price > 0:
+                                current_value = amount * current_price
+                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                
+                                positions.append({
+                                    'asset': asset,
+                                    'quantity': amount,
+                                    'avg_price': 0.0,
+                                    'current_price': current_price,
+                                    'current_value': current_value,
+                                    'total_invested': 0.0,
+                                    'pnl_percentage': 0.0,
+                                    'pnl_euro': 0.0,
+                                    'source': 'Simple Earn',
+                                    'type': 'Locked',
+                                    'apr': apr
+                                })
+                                self.logger.info(f"💰 {asset} (Locked specifico): {amount} @ {current_price} = {current_value:.2f} USDT")
+            
+            return positions
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore recupero posizioni specifiche per {asset}: {e}")
             return []
             
         except Exception as e:
