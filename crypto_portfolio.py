@@ -1140,23 +1140,26 @@ class GoogleSheetsManager:
             self.logger.error(f"❌ Errore formattazione summary bold: {e}")
     
     def _format_conditional_pnl(self, data_rows: int):
-        """Applica formattazione condizionale alla colonna PnL % (G)"""
+        """Applica formattazione condizionale alla colonna PnL % (G) inclusa riga totali"""
         try:
-            # Range per la colonna PnL % (escludendo header e summary)
-            pnl_range = f"{Config.SHEET_NAME}!G2:G{data_rows+1}"
+            # Calcola la riga dei totali
+            summary_row = data_rows + 3
             
-            # Formattazione percentuale base
+            # Range per la colonna PnL % (dati + totali, escludendo header)
+            pnl_range = f"{Config.SHEET_NAME}!G2:G{summary_row}"
+            
+            # Formattazione percentuale base per tutto il range
             self._format_percentage(pnl_range)
             
             # Formattazione condizionale: rosso per perdite, verde per profitti
-            # Scala da -100% a 100%
+            # Scala da -100% a 100% - INCLUDE RIGA TOTALI
             request = {
                 'addConditionalFormatRule': {
                     'rule': {
                         'ranges': [{
                             'sheetId': 0,
                             'startRowIndex': 1,  # Riga 2 (dopo header)
-                            'endRowIndex': data_rows + 1,
+                            'endRowIndex': summary_row,  # INCLUDE RIGA TOTALI
                             'startColumnIndex': 6,  # Colonna G
                             'endColumnIndex': 7
                         }],
@@ -1198,7 +1201,7 @@ class GoogleSheetsManager:
                 body={'requests': [request]}
             ).execute()
             
-            self.logger.info("✅ Formattazione condizionale PnL % applicata")
+            self.logger.info(f"✅ Formattazione condizionale PnL % applicata (inclusa riga totali {summary_row})")
             
         except Exception as e:
             self.logger.error(f"❌ Errore formattazione condizionale PnL %: {e}")
