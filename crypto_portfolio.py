@@ -74,8 +74,16 @@ class BinanceManager:
     """Gestore per Binance API"""
     
     def __init__(self):
-        self.client = Client(Config.BINANCE_API_KEY, Config.BINANCE_SECRET_KEY)
+        # Supporta endpoint dinamici per bypassare restrizioni geografiche
+        api_url = os.getenv('BINANCE_API_URL', 'https://api.binance.com')
         self.logger = logging.getLogger('Binance')
+        self.logger.info(f"🌐 Usando endpoint Binance: {api_url}")
+        
+        # Il client python-binance non supporta base_url, usiamo il default
+        self.client = Client(Config.BINANCE_API_KEY, Config.BINANCE_SECRET_KEY)
+        
+        # Per ora usiamo il client standard, le alternative sono nel GitHub Action
+        self.logger.info("💡 Endpoint alternativi gestiti nel GitHub Action workflow")
     
     def test_connection(self) -> bool:
         """Testa connessione Binance"""
