@@ -41,6 +41,8 @@ class Config:
     
     # Sheet Configuration
     SHEET_NAME = 'Portfolio'
+    OVERVIEW_SHEET_NAME = 'Overview'
+    CHART_SHEET_NAME = 'Grafico'
     START_ROW = 2
     
     # Headers
@@ -48,6 +50,12 @@ class Config:
         'Asset', 'Quantità', 'Prezzo Medio (USDT)', 'Prezzo Attuale (USDT)',
         'Valore Attuale (USDT)', 'Investito Totale (USDT)', 'PnL %', 'PnL USDT',
         'Fonte', 'Tipo', 'APR %', 'Ultimo Aggiornamento'
+    ]
+    
+    # Overview Headers
+    OVERVIEW_HEADERS = [
+        'Data Ultimo Aggiornamento', 'Valore Attuale Portfolio (USDT)', 
+        'Investito Totale (USDT)', 'PnL USDT Totale (USDT)', 'PnL %'
     ]
     
     # Logging
@@ -659,6 +667,12 @@ class GoogleSheetsManager:
             # 5. Applica formattazione
             self._apply_formatting(len(portfolio_data))
             
+            # 6. Aggiorna Overview
+            self._update_overview(portfolio_data)
+            
+            # 7. Aggiorna Grafico
+            self._update_chart()
+            
             self.logger.info("✅ Google Sheets aggiornato")
             
         except Exception as e:
@@ -1247,6 +1261,745 @@ class GoogleSheetsManager:
             spreadsheetId=Config.GOOGLE_SHEET_ID,
             body={'requests': [request]}
         ).execute()
+
+    def _update_overview(self, portfolio_data: List[Dict]):
+        """Aggiorna tab Overview con storico aggiornamenti"""
+        try:
+            # Calcola totali in USDT
+            total_value_usdt = sum(item['current_value'] for item in portfolio_data)
+            
+            # Leggi valori dalla riga totale del Portfolio
+            summary_values = self._get_portfolio_summary_values()
+            total_invested_usdt = summary_values.get('total_invested', 0)
+            total_pnl_usdt = summary_values.get('total_pnl', 0)
+            pnl_percentage = summary_values.get('pnl_percentage', 0)
+            
+            # Prepara nuova riga
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            new_row = [
+                current_time,
+                f"{total_value_usdt:.2f}",
+                f"{total_invested_usdt:.2f}",
+                f"{total_pnl_usdt:.2f}",
+                f"{pnl_percentage:.4f}"  # Usa 4 decimali per il valore decimale puro
+            ]
+            
+            # Crea tab Overview se non esiste
+            self._ensure_sheet_exists(Config.OVERVIEW_SHEET_NAME)
+            
+            # Scrivi intestazioni se tab vuota
+            self._write_overview_headers()
+            
+            # Aggiungi nuova riga in cima
+            self._append_overview_row(new_row)
+            
+            # Applica formattazione
+            self._format_overview()
+            
+            self.logger.info("✅ Tab Overview aggiornata")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore aggiornamento Overview: {e}")
+            raise
+
+    def _update_chart(self):
+        """Aggiorna tab Grafico con dati per visualizzazione"""
+        try:
+            # Crea tab Grafico se non esiste
+            self._ensure_sheet_exists(Config.CHART_SHEET_NAME)
+            
+            # Leggi dati da Overview
+            overview_data = self._read_overview_data()
+            
+            if not overview_data:
+                self.logger.info("📊 Nessun dato per grafico")
+                return
+            
+            self.logger.info(f"📊 Dati Overview per grafico: {len(overview_data)} righe")
+            
+            # Prepara dati per grafico
+            chart_data = []
+            for row in overview_data:
+                if len(row) >= 3:  # Almeno data, valore, investito
+                    try:
+                        date = row[0]
+                        
+                        # Pulisci valore (rimuovi $ e converti formato europeo)
+                        value_str = row[1].replace('$', '').replace(' ', '').strip()
+                        if ',' in value_str and '.' in value_str:
+                            value_str = value_str.replace('.', '').replace(',', '.')
+                        elif ',' in value_str:
+                            value_str = value_str.replace(',', '.')
+                        value = float(value_str)
+                        
+                        # Pulisci investito (rimuovi $ e converti formato europeo)
+                        invested_str = row[2].replace('$', '').replace(' ', '').strip()
+                        if ',' in invested_str and '.' in invested_str:
+                            invested_str = invested_str.replace('.', '').replace(',', '.')
+                        elif ',' in invested_str:
+                            invested_str = invested_str.replace(',', '.')
+                        invested = float(invested_str)
+                        
+                        chart_data.append([date, value, invested])
+                        self.logger.info(f"📊 Dato grafico: {date} -> Valore: {value}, Investito: {invested}")
+                    except (ValueError, IndexError) as e:
+                        self.logger.warning(f"⚠️ Errore conversione riga grafico: {row} - {e}")
+                        continue
+            
+            # Scrivi dati grafico
+            self._write_chart_data(chart_data)
+            
+            # Applica formattazione grafico
+            self._format_chart()
+            
+            # Crea grafico
+            self._create_chart()
+            
+            self.logger.info("✅ Tab Grafico aggiornata")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore aggiornamento Grafico: {e}")
+            raise
+
+    def _ensure_sheet_exists(self, sheet_name: str):
+        """Crea tab se non esiste"""
+        try:
+            # Controlla se tab esiste
+            spreadsheet = self.service.spreadsheets().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID
+            ).execute()
+            
+            existing_sheets = [sheet['properties']['title'] for sheet in spreadsheet['sheets']]
+            
+            if sheet_name not in existing_sheets:
+                # Crea nuova tab
+                request = {
+                    'addSheet': {
+                        'properties': {
+                            'title': sheet_name
+                        }
+                    }
+                }
+                
+                self.service.spreadsheets().batchUpdate(
+                    spreadsheetId=Config.GOOGLE_SHEET_ID,
+                    body={'requests': [request]}
+                ).execute()
+                
+                self.logger.info(f"✅ Tab '{sheet_name}' creata")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore creazione tab {sheet_name}: {e}")
+            raise
+
+    def _write_overview_headers(self):
+        """Scrive intestazioni tab Overview"""
+        try:
+            # Scrivi sempre le intestazioni (sovrascrive quelle esistenti)
+            range_name = f"{Config.OVERVIEW_SHEET_NAME}!A1:E1"
+            body = {'values': [Config.OVERVIEW_HEADERS]}
+            self.service.spreadsheets().values().update(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=range_name,
+                valueInputOption='RAW',
+                body=body
+            ).execute()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore scrittura intestazioni Overview: {e}")
+            raise
+
+    def _append_overview_row(self, new_row: List[str]):
+        """Aggiunge nuova riga in fondo alla tab Overview (ordine cronologico)"""
+        try:
+            # Leggi tutte le righe esistenti
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.OVERVIEW_SHEET_NAME}!A:E"
+            ).execute()
+            
+            existing_rows = result.get('values', [])
+            
+            # Trova la prossima riga disponibile (dopo intestazioni)
+            next_row = len(existing_rows) + 1
+            
+            # Scrivi nuova riga in fondo
+            range_name = f"{Config.OVERVIEW_SHEET_NAME}!A{next_row}:E{next_row}"
+            
+            # Prepara valori con tipi corretti per formattazione
+            formatted_row = []
+            for i, value in enumerate(new_row):
+                if i == 0:  # Timestamp (stringa)
+                    formatted_row.append(value)
+                elif i in [1, 2, 3]:  # Valori USDT (numeri)
+                    try:
+                        formatted_row.append(float(value))
+                    except (ValueError, TypeError):
+                        formatted_row.append(value)
+                elif i == 4:  # PnL % (numero decimale puro)
+                    try:
+                        # Assicurati che sia un decimale puro (es: 0.0571 invece di 5.71)
+                        pnl_decimal = float(value)
+                        formatted_row.append(pnl_decimal)
+                    except (ValueError, TypeError):
+                        formatted_row.append(value)
+                else:
+                    formatted_row.append(value)
+            
+            body = {'values': [formatted_row]}
+            self.service.spreadsheets().values().update(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=range_name,
+                valueInputOption='USER_ENTERED',  # Permette formattazione automatica
+                body=body
+            ).execute()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore aggiunta riga Overview: {e}")
+            raise
+
+    def _insert_row_at_position(self, new_row: List[str], position: int):
+        """Inserisce riga in posizione specifica"""
+        try:
+            # Inserisci riga vuota
+            request = {
+                'insertDimension': {
+                    'range': {
+                        'sheetId': self._get_sheet_id(Config.OVERVIEW_SHEET_NAME),
+                        'dimension': 'ROWS',
+                        'startIndex': position - 1,
+                        'endIndex': position
+                    }
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request]}
+            ).execute()
+            
+            # Scrivi nuova riga
+            range_name = f"{Config.OVERVIEW_SHEET_NAME}!A{position}:E{position}"
+            body = {'values': [new_row]}
+            self.service.spreadsheets().values().update(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=range_name,
+                valueInputOption='USER_ENTERED',  # Permette formattazione automatica
+                body=body
+            ).execute()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore inserimento riga: {e}")
+            raise
+
+    def _get_sheet_id(self, sheet_name: str) -> int:
+        """Ottiene ID della tab"""
+        try:
+            spreadsheet = self.service.spreadsheets().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID
+            ).execute()
+            
+            for sheet in spreadsheet['sheets']:
+                if sheet['properties']['title'] == sheet_name:
+                    return sheet['properties']['sheetId']
+            
+            raise ValueError(f"Tab '{sheet_name}' non trovata")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore ottenimento ID tab: {e}")
+            raise
+
+    def _read_overview_data(self) -> List[List[str]]:
+        """Legge dati dalla tab Overview"""
+        try:
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.OVERVIEW_SHEET_NAME}!A:E"
+            ).execute()
+            
+            values = result.get('values', [])
+            self.logger.info(f"📊 Dati Overview letti: {len(values)} righe")
+            if values:
+                self.logger.info(f"📊 Prima riga Overview: {values[0]}")
+                if len(values) > 1:
+                    self.logger.info(f"📊 Seconda riga Overview: {values[1]}")
+            
+            return values
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore lettura dati Overview: {e}")
+            return []
+
+    def _write_chart_data(self, chart_data: List[List]):
+        """Scrive dati per grafico"""
+        try:
+            # Pulisci tab grafico
+            self.service.spreadsheets().values().clear(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.CHART_SHEET_NAME}!A:C"
+            ).execute()
+            
+            # Scrivi intestazioni
+            headers = ['Data', 'Valore Portfolio (USDT)', 'Investito Totale (USDT)']
+            range_headers = f"{Config.CHART_SHEET_NAME}!A1:C1"
+            body_headers = {'values': [headers]}
+            self.service.spreadsheets().values().update(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=range_headers,
+                valueInputOption='RAW',
+                body=body_headers
+            ).execute()
+            
+            # Scrivi dati
+            if chart_data:
+                range_data = f"{Config.CHART_SHEET_NAME}!A2:C{len(chart_data)+1}"
+                body_data = {'values': chart_data}
+                self.service.spreadsheets().values().update(
+                    spreadsheetId=Config.GOOGLE_SHEET_ID,
+                    range=range_data,
+                    valueInputOption='RAW',
+                    body=body_data
+                ).execute()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore scrittura dati grafico: {e}")
+            raise
+
+    def _format_overview(self):
+        """Applica formattazione tab Overview"""
+        try:
+            # Formattazione intestazioni bold
+            self._format_overview_header_bold()
+            
+            # Formattazione valuta per colonne B, C, D
+            self._format_overview_currency()
+            
+            # Formattazione percentuale per colonna E
+            self._format_overview_percentage()
+            
+            # Formattazione condizionale PnL %
+            self._format_overview_conditional_pnl()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione Overview: {e}")
+            raise
+
+    def _format_overview_header_bold(self):
+        """Formattazione bold intestazioni Overview"""
+        try:
+            sheet_id = self._get_sheet_id(Config.OVERVIEW_SHEET_NAME)
+            
+            request = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': 0,
+                        'endRowIndex': 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 5
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'textFormat': {
+                                'bold': True
+                            }
+                        }
+                    },
+                    'fields': 'userEnteredFormat.textFormat.bold'
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request]}
+            ).execute()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione bold Overview: {e}")
+            raise
+
+    def _format_overview_currency(self):
+        """Formattazione dollari Overview"""
+        try:
+            sheet_id = self._get_sheet_id(Config.OVERVIEW_SHEET_NAME)
+            
+            # Leggi numero righe per applicare formattazione a tutte le righe
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.OVERVIEW_SHEET_NAME}!A:A"
+            ).execute()
+            
+            data_rows = len(result.get('values', []))
+            self.logger.info(f"📊 Applicazione formattazione dollari a {data_rows} righe")
+            
+            # Formattazione dollari per colonne B, C, D (USDT)
+            for col in ['B', 'C', 'D']:
+                self.logger.info(f"💵 Formattazione dollari colonna {col}")
+                request = {
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': sheet_id,
+                            'startRowIndex': 1,  # Escludi intestazioni
+                            'endRowIndex': data_rows,
+                            'startColumnIndex': ord(col) - ord('A'),
+                            'endColumnIndex': ord(col) - ord('A') + 1
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'numberFormat': {
+                                    'type': 'CURRENCY',
+                                    'pattern': '$#,##0.00'
+                                }
+                            }
+                        },
+                        'fields': 'userEnteredFormat.numberFormat'
+                    }
+                }
+                
+                self.service.spreadsheets().batchUpdate(
+                    spreadsheetId=Config.GOOGLE_SHEET_ID,
+                    body={'requests': [request]}
+                ).execute()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione valuta Overview: {e}")
+            raise
+
+    def _format_overview_percentage(self):
+        """Formattazione percentuale Overview"""
+        try:
+            sheet_id = self._get_sheet_id(Config.OVERVIEW_SHEET_NAME)
+            
+            # Leggi numero righe per applicare formattazione a tutte le righe
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.OVERVIEW_SHEET_NAME}!A:A"
+            ).execute()
+            
+            data_rows = len(result.get('values', []))
+            
+            request = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': 1,  # Escludi intestazioni
+                        'endRowIndex': data_rows,
+                        'startColumnIndex': 4,  # Colonna E
+                        'endColumnIndex': 5
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'numberFormat': {
+                                'type': 'PERCENT',
+                                'pattern': '0.00%'
+                            }
+                        }
+                    },
+                    'fields': 'userEnteredFormat.numberFormat'
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request]}
+            ).execute()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione percentuale Overview: {e}")
+            raise
+
+    def _format_overview_conditional_pnl(self):
+        """Formattazione condizionale PnL % Overview"""
+        try:
+            sheet_id = self._get_sheet_id(Config.OVERVIEW_SHEET_NAME)
+            
+            # Leggi numero righe
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.OVERVIEW_SHEET_NAME}!A:A"
+            ).execute()
+            
+            data_rows = len(result.get('values', [])) - 1  # Escludi intestazioni
+            
+            if data_rows > 0:
+                request = {
+                    'addConditionalFormatRule': {
+                        'rule': {
+                            'ranges': [{
+                                'sheetId': sheet_id,
+                                'startRowIndex': 1,
+                                'endRowIndex': data_rows + 1,
+                                'startColumnIndex': 4,  # Colonna E
+                                'endColumnIndex': 5
+                            }],
+                            'gradientRule': {
+                                'minpoint': {
+                                    'color': {'red': 1.0, 'green': 0.0, 'blue': 0.0},
+                                    'type': 'NUMBER',
+                                    'value': '-100'
+                                },
+                                'midpoint': {
+                                    'color': {'red': 1.0, 'green': 1.0, 'blue': 0.0},
+                                    'type': 'NUMBER',
+                                    'value': '0'
+                                },
+                                'maxpoint': {
+                                    'color': {'red': 0.0, 'green': 1.0, 'blue': 0.0},
+                                    'type': 'NUMBER',
+                                    'value': '100'
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                self.service.spreadsheets().batchUpdate(
+                    spreadsheetId=Config.GOOGLE_SHEET_ID,
+                    body={'requests': [request]}
+                ).execute()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione condizionale Overview: {e}")
+            raise
+
+    def _format_chart(self):
+        """Applica formattazione tab Grafico"""
+        try:
+            sheet_id = self._get_sheet_id(Config.CHART_SHEET_NAME)
+            
+            # Formattazione intestazioni bold
+            request = {
+                'repeatCell': {
+                    'range': {
+                        'sheetId': sheet_id,
+                        'startRowIndex': 0,
+                        'endRowIndex': 1,
+                        'startColumnIndex': 0,
+                        'endColumnIndex': 3
+                    },
+                    'cell': {
+                        'userEnteredFormat': {
+                            'textFormat': {
+                                'bold': True
+                            }
+                        }
+                    },
+                    'fields': 'userEnteredFormat.textFormat.bold'
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request]}
+            ).execute()
+            
+            # Formattazione dollari per colonne B, C (USDT)
+            for col in ['B', 'C']:
+                request = {
+                    'repeatCell': {
+                        'range': {
+                            'sheetId': sheet_id,
+                            'startColumnIndex': ord(col) - ord('A'),
+                            'endColumnIndex': ord(col) - ord('A') + 1
+                        },
+                        'cell': {
+                            'userEnteredFormat': {
+                                'numberFormat': {
+                                    'type': 'CURRENCY',
+                                    'pattern': '$#,##0.00'
+                                }
+                            }
+                        },
+                        'fields': 'userEnteredFormat.numberFormat'
+                    }
+                }
+                
+                self.service.spreadsheets().batchUpdate(
+                    spreadsheetId=Config.GOOGLE_SHEET_ID,
+                    body={'requests': [request]}
+                ).execute()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore formattazione Grafico: {e}")
+            raise
+
+    def _get_portfolio_summary_values(self) -> Dict[str, float]:
+        """Legge valori dalla riga totale del Portfolio"""
+        try:
+            # Leggi la riga totale (summary) del Portfolio
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.SHEET_NAME}!E:H"  # Colonne E-H (Valore, Investito, PnL%, PnL USDT)
+            ).execute()
+            
+            values = result.get('values', [])
+            self.logger.info(f"📊 Righe trovate nel summary: {len(values)}")
+            
+            if len(values) > 0:
+                # L'ultima riga dovrebbe essere la riga totale
+                summary_row = values[-1]
+                self.logger.info(f"📊 Riga summary: {summary_row}")
+                
+                if len(summary_row) >= 4:
+                    try:
+                        # Pulisci i valori da simboli di valuta e formattazione
+                        def clean_value(value_str, is_percentage=False):
+                            if not value_str:
+                                return 0
+                            # Rimuovi simboli di valuta e spazi
+                            cleaned = value_str.replace('$', '').replace('€', '').replace(' ', '').strip()
+                            
+                            # Gestisci formato europeo (es: 4.737,67 -> 4737.67)
+                            if ',' in cleaned and '.' in cleaned:
+                                # Se ci sono sia virgola che punto, la virgola è il separatore decimale
+                                cleaned = cleaned.replace('.', '').replace(',', '.')
+                            elif ',' in cleaned:
+                                # Se c'è solo virgola, è il separatore decimale
+                                cleaned = cleaned.replace(',', '.')
+                            
+                            # Per le percentuali, rimuovi il simbolo % e dividi per 100
+                            if is_percentage:
+                                cleaned = cleaned.replace('%', '')
+                                value = float(cleaned) if cleaned else 0
+                                return value / 100  # Converti da percentuale a decimale
+                            else:
+                                return float(cleaned) if cleaned else 0
+                        
+                        total_value = clean_value(summary_row[0])
+                        total_invested = clean_value(summary_row[1])
+                        pnl_percentage = clean_value(summary_row[2], is_percentage=True)  # Gestisci come percentuale
+                        total_pnl = clean_value(summary_row[3])
+                        
+                        self.logger.info(f"💰 Valori letti - Investito: {total_invested}, PnL: {total_pnl}, PnL%: {pnl_percentage}")
+                        
+                        return {
+                            'total_invested': total_invested,
+                            'pnl_percentage': pnl_percentage,
+                            'total_pnl': total_pnl
+                        }
+                    except (ValueError, TypeError) as e:
+                        self.logger.error(f"❌ Errore conversione valori: {e}")
+                        pass
+                else:
+                    self.logger.warning(f"⚠️ Riga summary troppo corta: {len(summary_row)} colonne")
+            else:
+                self.logger.warning("⚠️ Nessuna riga trovata nel summary")
+            
+            # Fallback se non riesce a leggere
+            return {'total_invested': 0, 'pnl_percentage': 0, 'total_pnl': 0}
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore lettura valori summary: {e}")
+            return {'total_invested': 0, 'pnl_percentage': 0, 'total_pnl': 0}
+
+    def _create_chart(self):
+        """Crea grafico nella tab Grafico"""
+        try:
+            sheet_id = self._get_sheet_id(Config.CHART_SHEET_NAME)
+            
+            # Leggi numero righe dati
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                range=f"{Config.CHART_SHEET_NAME}!A:A"
+            ).execute()
+            
+            data_rows = len(result.get('values', [])) - 1  # Escludi intestazioni
+            
+            if data_rows <= 0:
+                self.logger.info("📊 Nessun dato per creare grafico")
+                return
+            
+            # Crea grafico
+            request = {
+                'addChart': {
+                    'chart': {
+                        'spec': {
+                            'title': 'Andamento Portfolio',
+                            'basicChart': {
+                                'chartType': 'LINE',
+                                'legendPosition': 'BOTTOM_LEGEND',
+                                'axis': [
+                                    {
+                                        'position': 'BOTTOM_AXIS',
+                                        'title': 'Data'
+                                    },
+                                    {
+                                        'position': 'LEFT_AXIS',
+                                        'title': 'Valore (USDT)'
+                                    }
+                                ],
+                                'domains': [
+                                    {
+                                        'domain': {
+                                            'sourceRange': {
+                                                'sources': [{
+                                                    'sheetId': sheet_id,
+                                                    'startRowIndex': 0,
+                                                    'endRowIndex': data_rows + 1,
+                                                    'startColumnIndex': 0,
+                                                    'endColumnIndex': 1
+                                                }]
+                                            }
+                                        }
+                                    }
+                                ],
+                                'series': [
+                                    {
+                                        'series': {
+                                            'sourceRange': {
+                                                'sources': [{
+                                                    'sheetId': sheet_id,
+                                                    'startRowIndex': 0,
+                                                    'endRowIndex': data_rows + 1,
+                                                    'startColumnIndex': 1,
+                                                    'endColumnIndex': 2
+                                                }]
+                                            }
+                                        },
+                                        'targetAxis': 'LEFT_AXIS'
+                                    },
+                                    {
+                                        'series': {
+                                            'sourceRange': {
+                                                'sources': [{
+                                                    'sheetId': sheet_id,
+                                                    'startRowIndex': 0,
+                                                    'endRowIndex': data_rows + 1,
+                                                    'startColumnIndex': 2,
+                                                    'endColumnIndex': 3
+                                                }]
+                                            }
+                                        },
+                                        'targetAxis': 'LEFT_AXIS'
+                                    }
+                                ]
+                            }
+                        },
+                        'position': {
+                            'overlayPosition': {
+                                'anchorCell': {
+                                    'sheetId': sheet_id,
+                                    'rowIndex': 0,
+                                    'columnIndex': 5
+                                },
+                                'widthPixels': 600,
+                                'heightPixels': 400
+                            }
+                        }
+                    }
+                }
+            }
+            
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=Config.GOOGLE_SHEET_ID,
+                body={'requests': [request]}
+            ).execute()
+            
+            self.logger.info("✅ Grafico creato")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore creazione grafico: {e}")
+            raise
 
 def setup_logging():
     """Configura logging"""
