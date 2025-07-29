@@ -173,185 +173,113 @@ class BinanceManager:
             return []
     
     def _get_earn_data(self) -> List[Dict]:
-        """Recupera dati Simple Earn"""
+        """Recupera dati Simple Earn usando API REST diretta"""
         try:
             earn_data = []
             
-            # Prova prima a ottenere tutte le posizioni Simple Earn
-            try:
-                # Prova diversi metodi per Simple Earn
-                self.logger.info("🔍 Tentativo recupero Simple Earn...")
-                
-                # Metodo 1: get_simple_earn_flexible_product_position
-                try:
-                    flexible_all = self.client.get_simple_earn_flexible_product_position()
-                    self.logger.info(f"✅ Metodo 1 funziona: {len(flexible_all.get('rows', []))} posizioni")
-                except:
-                    # Metodo 2: get_simple_earn_flexible_position
-                    try:
-                        flexible_all = self.client.get_simple_earn_flexible_position()
-                        self.logger.info(f"✅ Metodo 2 funziona: {len(flexible_all.get('rows', []))} posizioni")
-                    except:
-                        # Metodo 3: get_simple_earn_flexible_product_position senza parametri
-                        try:
-                            flexible_all = self.client.get_simple_earn_flexible_product_position()
-                            self.logger.info(f"✅ Metodo 3 funziona: {len(flexible_all.get('rows', []))} posizioni")
-                        except Exception as e3:
-                            self.logger.warning(f"⚠️ Tutti i metodi flexible falliti: {e3}")
-                            flexible_all = None
-                
-                if flexible_all and flexible_all.get('rows'):
-                    for pos in flexible_all['rows']:
-                        asset = pos['asset']
-                        amount = float(pos['totalAmount'])
-                        
-                        if amount > 0:
-                            current_price = self._get_current_price(asset)
-                            
-                            if current_price > 0:
-                                current_value = amount * current_price
-                                avg_price = 0.0
-                                total_invested = 0.0
-                                pnl = 0.0
-                                pnl_percentage = 0.0
-                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                                
-                                earn_data.append({
-                                    'asset': asset,
-                                    'quantity': amount,
-                                    'avg_price': avg_price,
-                                    'current_price': current_price,
-                                    'current_value': current_value,
-                                    'total_invested': total_invested,
-                                    'pnl_percentage': pnl_percentage,
-                                    'pnl_euro': pnl,
-                                    'source': 'Simple Earn',
-                                    'type': 'Flexible',
-                                    'apr': apr
-                                })
-                                self.logger.info(f"💰 {asset}: {amount} @ {current_price} = {current_value:.2f} USDT")
-                
-                # Stesso approccio per locked positions
-                try:
-                    locked_all = self.client.get_simple_earn_locked_product_position()
-                    self.logger.info(f"✅ Locked positions: {len(locked_all.get('rows', []))} posizioni")
-                except:
-                    try:
-                        locked_all = self.client.get_simple_earn_locked_position()
-                        self.logger.info(f"✅ Locked positions (metodo 2): {len(locked_all.get('rows', []))} posizioni")
-                    except Exception as e2:
-                        self.logger.warning(f"⚠️ Metodi locked falliti: {e2}")
-                        locked_all = None
-                
-                if locked_all and locked_all.get('rows'):
-                    for pos in locked_all['rows']:
-                        asset = pos['asset']
-                        amount = float(pos['totalAmount'])
-                        
-                        if amount > 0:
-                            current_price = self._get_current_price(asset)
-                            
-                            if current_price > 0:
-                                current_value = amount * current_price
-                                avg_price = 0.0
-                                total_invested = 0.0
-                                pnl = 0.0
-                                pnl_percentage = 0.0
-                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                                
-                                earn_data.append({
-                                    'asset': asset,
-                                    'quantity': amount,
-                                    'avg_price': avg_price,
-                                    'current_price': current_price,
-                                    'current_value': current_value,
-                                    'total_invested': total_invested,
-                                    'pnl_percentage': pnl_percentage,
-                                    'pnl_euro': pnl,
-                                    'source': 'Simple Earn',
-                                    'type': 'Locked',
-                                    'apr': apr
-                                })
-                                self.logger.info(f"💰 {asset}: {amount} @ {current_price} = {current_value:.2f} USDT")
-                                
-            except Exception as e:
-                self.logger.warning(f"⚠️ Errore nel recupero Simple Earn generale: {e}")
-                
-                # Fallback: usa lista hardcoded
-                assets_to_check = ['ARB', 'BNB', 'BTC', 'C', 'ERA', 'ETH', 'HAEDAL', 'HOME', 'HUMA', 'HYPER', 'SOL', 'TAO', 'OP', 'ONDO']
-                
-                for asset in assets_to_check:
-                    try:
-                        # Flexible positions per asset specifico
-                        flexible = self.client.get_simple_earn_flexible_product_position(asset=asset)
-                        
-                        if flexible and flexible.get('rows'):
-                            for pos in flexible['rows']:
-                                amount = float(pos['totalAmount'])
-                                
-                                if amount > 0:
-                                    current_price = self._get_current_price(asset)
-                                    
-                                    if current_price > 0:
-                                        current_value = amount * current_price
-                                        avg_price = 0.0
-                                        total_invested = 0.0
-                                        pnl = 0.0
-                                        pnl_percentage = 0.0
-                                        apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                                        
-                                        earn_data.append({
-                                            'asset': asset,
-                                            'quantity': amount,
-                                            'avg_price': avg_price,
-                                            'current_price': current_price,
-                                            'current_value': current_value,
-                                            'total_invested': total_invested,
-                                            'pnl_percentage': pnl_percentage,
-                                            'pnl_euro': pnl,
-                                            'source': 'Simple Earn',
-                                            'type': 'Flexible',
-                                            'apr': apr
-                                        })
-                        
-                        # Locked positions per asset specifico
-                        locked = self.client.get_simple_earn_locked_product_position(asset=asset)
-                        
-                        if locked and locked.get('rows'):
-                            for pos in locked['rows']:
-                                amount = float(pos['totalAmount'])
-                                
-                                if amount > 0:
-                                    current_price = self._get_current_price(asset)
-                                    
-                                    if current_price > 0:
-                                        current_value = amount * current_price
-                                        avg_price = 0.0
-                                        total_invested = 0.0
-                                        pnl = 0.0
-                                        pnl_percentage = 0.0
-                                        apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
-                                        
-                                        earn_data.append({
-                                            'asset': asset,
-                                            'quantity': amount,
-                                            'avg_price': avg_price,
-                                            'current_price': current_price,
-                                            'current_value': current_value,
-                                            'total_invested': total_invested,
-                                            'pnl_percentage': pnl_percentage,
-                                            'pnl_euro': pnl,
-                                            'source': 'Simple Earn',
-                                            'type': 'Locked',
-                                            'apr': apr
-                                        })
-                                        
-                    except Exception as e:
-                        self.logger.debug(f"Error processing {asset}: {e}")
-                        continue
+            self.logger.info("🔍 Recupero Simple Earn con API REST diretta...")
             
-            self.logger.info(f"✅ Simple Earn: {len(earn_data)} posizioni")
+            # Recupera posizioni flexible
+            flexible_positions = self._get_simple_earn_positions('FLEXIBLE')
+            if flexible_positions:
+                earn_data.extend(flexible_positions)
+                self.logger.info(f"✅ Flexible positions: {len(flexible_positions)} posizioni")
+            
+            # Recupera posizioni locked
+            locked_positions = self._get_simple_earn_positions('LOCKED')
+            if locked_positions:
+                earn_data.extend(locked_positions)
+                self.logger.info(f"✅ Locked positions: {len(locked_positions)} posizioni")
+            
+            self.logger.info(f"✅ Simple Earn: {len(earn_data)} posizioni totali")
             return earn_data
+            
+        except Exception as e:
+            self.logger.error(f"❌ Errore Simple Earn: {e}")
+            return []
+    
+    def _get_simple_earn_positions(self, product_type: str) -> List[Dict]:
+        """Recupera posizioni Simple Earn per tipo specifico"""
+        try:
+            import time
+            import hmac
+            import hashlib
+            import requests
+            
+            # Parametri per la richiesta
+            timestamp = int(time.time() * 1000)
+            params = {
+                'product': product_type,
+                'timestamp': timestamp
+            }
+            
+            # Crea signature
+            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            signature = hmac.new(
+                Config.BINANCE_SECRET_KEY.encode('utf-8'),
+                query_string.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            # URL e headers
+            url = f"https://api.binance.com/sapi/v1/simple-earn/flexible/position"
+            if product_type == 'LOCKED':
+                url = f"https://api.binance.com/sapi/v1/simple-earn/locked/position"
+            
+            headers = {
+                'X-MBX-APIKEY': Config.BINANCE_API_KEY
+            }
+            
+            # Aggiungi signature ai parametri
+            params['signature'] = signature
+            
+            # Fai la richiesta
+            response = requests.get(url, headers=headers, params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
+                positions = []
+                
+                if 'rows' in data and data['rows']:
+                    for pos in data['rows']:
+                        asset = pos['asset']
+                        amount = float(pos['totalAmount'])
+                        
+                        if amount > 0:
+                            current_price = self._get_current_price(asset)
+                            
+                            if current_price > 0:
+                                current_value = amount * current_price
+                                avg_price = 0.0
+                                total_invested = 0.0
+                                pnl = 0.0
+                                pnl_percentage = 0.0
+                                apr = float(pos.get('latestAnnualPercentageRate', 0)) * 100
+                                
+                                positions.append({
+                                    'asset': asset,
+                                    'quantity': amount,
+                                    'avg_price': avg_price,
+                                    'current_price': current_price,
+                                    'current_value': current_value,
+                                    'total_invested': total_invested,
+                                    'pnl_percentage': pnl_percentage,
+                                    'pnl_euro': pnl,
+                                    'source': 'Simple Earn',
+                                    'type': product_type.title(),
+                                    'apr': apr
+                                })
+                                
+                                self.logger.info(f"💰 {asset} ({product_type}): {amount} @ {current_price} = {current_value:.2f} USDT")
+                
+                return positions
+            else:
+                self.logger.error(f"❌ Errore API Simple Earn {product_type}: {response.status_code} - {response.text}")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"❌ Errore recupero posizioni {product_type}: {e}")
+            return []
             
         except Exception as e:
             self.logger.error(f"❌ Errore Simple Earn: {e}")
