@@ -595,6 +595,15 @@ class GoogleSheetsManager:
             data_range = f"{Config.SHEET_NAME}!A2:L{data_rows+1}"
             summary_range = f"{Config.SHEET_NAME}!A{data_rows+3}:L{data_rows+3}"
             
+            # 1. Formattazione header in bold (riga 1)
+            self._format_header_bold()
+            
+            # 2. Formattazione riga totali in bold
+            self._format_summary_bold(data_rows)
+            
+            # 3. Formattazione condizionale PnL % (colonna G)
+            self._format_conditional_pnl(data_rows)
+            
             # Formattazione per colonne USDT ($)
             usdt_columns = ['D', 'E', 'F', 'H']  # Prezzo Attuale, Valore Attuale, Investito, PnL USDT
             
@@ -608,7 +617,7 @@ class GoogleSheetsManager:
                 self._format_currency(summary_col_range)
             
             # Formattazione per colonne percentuali (%)
-            percent_columns = ['G', 'K']  # PnL %, APR %
+            percent_columns = ['K']  # APR % (PnL % gestito separatamente)
             
             for col in percent_columns:
                 # Formatta colonne dati
@@ -706,6 +715,120 @@ class GoogleSheetsManager:
                     }
                 },
                 'fields': 'userEnteredFormat.numberFormat'
+            }
+        }
+        
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            body={'requests': [request]}
+        ).execute()
+    
+    def _format_header_bold(self):
+        """Formatta header (riga 1) in bold"""
+        request = {
+            'repeatCell': {
+                'range': {
+                    'sheetId': 0,
+                    'startRowIndex': 0,
+                    'endRowIndex': 1,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 12  # Colonne A-L
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'textFormat': {
+                            'bold': True
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat.textFormat.bold'
+            }
+        }
+        
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            body={'requests': [request]}
+        ).execute()
+    
+    def _format_summary_bold(self, data_rows: int):
+        """Formatta riga totali in bold"""
+        summary_row = data_rows + 3  # Riga dopo i dati + 1 riga vuota
+        
+        request = {
+            'repeatCell': {
+                'range': {
+                    'sheetId': 0,
+                    'startRowIndex': summary_row - 1,
+                    'endRowIndex': summary_row,
+                    'startColumnIndex': 0,
+                    'endColumnIndex': 12  # Colonne A-L
+                },
+                'cell': {
+                    'userEnteredFormat': {
+                        'textFormat': {
+                            'bold': True
+                        }
+                    }
+                },
+                'fields': 'userEnteredFormat.textFormat.bold'
+            }
+        }
+        
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=Config.GOOGLE_SHEET_ID,
+            body={'requests': [request]}
+        ).execute()
+    
+    def _format_conditional_pnl(self, data_rows: int):
+        """Applica formattazione condizionale alla colonna PnL % (G)"""
+        # Range per la colonna PnL % (escludendo header e summary)
+        pnl_range = f"{Config.SHEET_NAME}!G2:G{data_rows+1}"
+        
+        # Formattazione percentuale base
+        self._format_percentage(pnl_range)
+        
+        # Formattazione condizionale: rosso per perdite, verde per profitti
+        # Scala da -100% a 100%
+        request = {
+            'addConditionalFormatRule': {
+                'rule': {
+                    'ranges': [{
+                        'sheetId': 0,
+                        'startRowIndex': 1,  # Riga 2 (dopo header)
+                        'endRowIndex': data_rows + 1,
+                        'startColumnIndex': 6,  # Colonna G
+                        'endColumnIndex': 7
+                    }],
+                    'gradientRule': {
+                        'minpoint': {
+                            'color': {
+                                'red': 1.0,    # Rosso
+                                'green': 0.0,
+                                'blue': 0.0
+                            },
+                            'type': 'NUMBER',
+                            'value': '-1'  # -100%
+                        },
+                        'midpoint': {
+                            'color': {
+                                'red': 1.0,    # Bianco
+                                'green': 1.0,
+                                'blue': 1.0
+                            },
+                            'type': 'NUMBER',
+                            'value': '0'   # 0%
+                        },
+                        'maxpoint': {
+                            'color': {
+                                'red': 0.0,    # Verde
+                                'green': 1.0,
+                                'blue': 0.0
+                            },
+                            'type': 'NUMBER',
+                            'value': '1'   # 100%
+                        }
+                    }
+                }
             }
         }
         
