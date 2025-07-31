@@ -1709,7 +1709,7 @@ class GoogleSheetsManager:
             raise
 
     def _format_overview_conditional_pnl(self):
-        """Formattazione condizionale PnL % Overview"""
+        """Formattazione condizionale PnL % Overview - Scala verde da 0% a +20%"""
         try:
             sheet_id = self._get_sheet_id(Config.OVERVIEW_SHEET_NAME)
             
@@ -1722,6 +1722,8 @@ class GoogleSheetsManager:
             data_rows = len(result.get('values', [])) - 1  # Escludi intestazioni
             
             if data_rows > 0:
+                # Aggiungi direttamente la nuova regola di formattazione condizionale
+                # Scala verde da 0% a 20%
                 request = {
                     'addConditionalFormatRule': {
                         'rule': {
@@ -1729,38 +1731,37 @@ class GoogleSheetsManager:
                                 'sheetId': sheet_id,
                                 'startRowIndex': 1,
                                 'endRowIndex': data_rows + 1,
-                                'startColumnIndex': 4,  # Colonna E
+                                'startColumnIndex': 4,  # Colonna E (PnL %)
                                 'endColumnIndex': 5
                             }],
                             'gradientRule': {
                                 'minpoint': {
-                                    'color': {'red': 1.0, 'green': 0.0, 'blue': 0.0},
+                                    'color': {'red': 0.8, 'green': 0.9, 'blue': 0.8},  # Verde chiaro
                                     'type': 'NUMBER',
-                                    'value': '-100'
-                                },
-                                'midpoint': {
-                                    'color': {'red': 1.0, 'green': 1.0, 'blue': 0.0},
-                                    'type': 'NUMBER',
-                                    'value': '0'
+                                    'value': '0'  # 0%
                                 },
                                 'maxpoint': {
-                                    'color': {'red': 0.0, 'green': 1.0, 'blue': 0.0},
+                                    'color': {'red': 0.0, 'green': 0.8, 'blue': 0.0},  # Verde scuro
                                     'type': 'NUMBER',
-                                    'value': '100'
+                                    'value': '20'  # +20%
                                 }
                             }
                         }
                     }
                 }
                 
+                # Esegui l'operazione
                 self.service.spreadsheets().batchUpdate(
                     spreadsheetId=Config.GOOGLE_SHEET_ID,
                     body={'requests': [request]}
                 ).execute()
                 
+                self.logger.info(f"✅ Formattazione condizionale Overview PnL% applicata (scala verde 0% a +20%)")
+                
         except Exception as e:
             self.logger.error(f"❌ Errore formattazione condizionale Overview: {e}")
-            raise
+            # Non sollevare l'eccezione per non bloccare l'aggiornamento
+            pass
 
     def _format_chart(self):
         """Applica formattazione tab Grafico"""
